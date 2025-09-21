@@ -1,0 +1,338 @@
+import { useParams, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Play, Plus, Heart, Share2, Star, Calendar, Clock, Tv, ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { tmdbService } from "@/lib/tmdb";
+import { useFavorites } from "@/hooks/use-favorites";
+import { useShare } from "@/hooks/use-share";
+import TVRow from "@/components/tv-row";
+
+export default function TVDetail() {
+  const { id } = useParams<{ id: string }>();
+  const tvId = parseInt(id || "0");
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set([1])); // First season expanded by default
+  const { toggleFavorite, checkFavorite, isAddingToFavorites } = useFavorites();
+  const { shareCurrentPage } = useShare();
+
+  const { data: tvDetails, isLoading } = useQuery({
+    queryKey: [`/api/tmdb/tv/${tvId}`],
+    queryFn: () => tmdbService.getTVShowDetails(tvId),
+    enabled: !!tvId,
+  });
+
+  // Check if series is favorite
+  const { data: favoriteStatus } = checkFavorite(tvId);
+  const isFavorite = favoriteStatus?.isFavorite || false;
+
+  const { data: similarShows } = useQuery({
+    queryKey: [`/api/tmdb/tv/similar/${tvId}`],
+    queryFn: () => {
+      // For now, get TV shows from the same primary genre
+      const primaryGenre = tvDetails?.genres?.[0]?.id;
+      return primaryGenre ? tmdbService.getTVShowsByGenre(primaryGenre) : [];
+    },
+    enabled: !!tvDetails?.genres?.[0]?.id,
+  });
+
+  const handleToggleFavorite = async () => {
+    if (tvDetails) {
+      // Create a simplified series object for the favorites system
+      const seriesForFavorites = {
+        id: tvDetails.id,
+        name: tvDetails.name,
+        poster_path: tvDetails.poster_path,
+        first_air_date: tvDetails.first_air_date,
+        genre_ids: tvDetails.genres?.map(g => g.id) || [],
+        vote_average: tvDetails.vote_average,
+        vote_count: tvDetails.vote_count,
+        popularity: tvDetails.popularity,
+        overview: tvDetails.overview,
+        backdrop_path: tvDetails.backdrop_path,
+        original_language: tvDetails.original_language,
+        original_name: tvDetails.original_name,
+        adult: false,
+      };
+      await toggleFavorite(seriesForFavorites, 'tv');
+    }
+  };
+
+  const handleAddToList = () => {
+    // TODO: Implement watchlist functionality
+    console.log('Add to watchlist:', tvDetails?.name);
+  };
+
+  const handleShare = async () => {
+    if (tvDetails) {
+      await shareCurrentPage(tvDetails.name);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background" data-testid="tv-detail-loading">
+        <div className="relative h-96 bg-muted animate-pulse">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-4">
+            <div className="h-8 bg-muted rounded animate-pulse"></div>
+            <div className="h-4 bg-muted rounded w-2/3 animate-pulse"></div>
+            <div className="h-4 bg-muted rounded w-1/2 animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!tvDetails) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center" data-testid="tv-detail-error">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground mb-4">Série non trouvée</h1>
+          <Link href="/series">
+            <Button>Retour aux séries</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const { credits, videos } = tvDetails;
+  const tv = tvDetails; // The TV details are directly in the response
+  const cast = credits.cast.slice(0, 8);
+  const trailer = videos.results.find(video => video.type === "Trailer" && video.site === "YouTube");
+
+  const formatEpisodeRuntime = (runtimes: number[] | undefined) => {
+    if (!runtimes || runtimes.length === 0) return null;
+    const avgRuntime = Math.round(runtimes.reduce((a, b) => a + b, 0) / runtimes.length);
+    return `~${avgRuntime}min/épisode`;
+  };
+
+  const getAirYears = () => {
+    if (!tv.first_air_date) return "Date inconnue";
+    const startYear = new Date(tv.first_air_date).getFullYear();
+    if (tv.status === "Ended" && tv.last_air_date) {
+      const endYear = new Date(tv.last_air_date).getFullYear();
+      return startYear === endYear ? startYear.toString() : `${startYear}-${endYear}`;
+    }
+    return `${startYear}-en cours`;
+  };
+
+  const toggleSeason = (seasonNumber: number) => {
+    setExpandedSeasons(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(seasonNumber)) {
+        newSet.delete(seasonNumber);
+      } else {
+        newSet.add(seasonNumber);
+      }
+      return newSet;
+    });
+  };
+
+  const generateEpisodes = (seasonNumber: number, episodeCount: number) => {
+    return Array.from({ length: episodeCount }, (_, i) => ({
+      episode_number: i + 1,
+      name: `Épisode ${i + 1}`,
+      overview: "Résumé de l'épisode à venir...",
+      runtime: tv.episode_run_time?.[0] || 45,
+      air_date: tv.first_air_date // Placeholder
+    }));
+  };
+
+  return (
+    <div className="min-h-screen bg-background" data-testid="tv-detail-page">
+      {/* Hero Section */}
+      <div className="relative h-screen">
+        <img
+          src={tmdbService.getBackdropUrl(tv.backdrop_path)}
+          alt={tv.name}
+          className="w-full h-full object-cover"
+          data-testid="tv-backdrop"
+        />
+        <div className="absolute inset-0 bg-black/50"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
+        
+        {/* Back button */}
+        <Link href="/series">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-8 left-8 bg-black/50 hover:bg-black/70 text-white w-12 h-12 rounded-full z-10"
+            data-testid="back-button"
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </Button>
+        </Link>
+        
+        {/* TV Show info */}
+        <div className="absolute bottom-16 left-8 md:left-16 max-w-3xl z-10">
+          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4" data-testid="tv-title">
+            {tv.name}
+          </h1>
+          
+          <div className="flex items-center space-x-6 text-white/80 mb-6" data-testid="tv-metadata">
+            <span className="flex items-center space-x-1">
+              <Calendar className="w-5 h-5" />
+              <span>{getAirYears()}</span>
+            </span>
+            {tv.number_of_seasons && (
+              <span className="flex items-center space-x-1">
+                <Tv className="w-5 h-5" />
+                <span>{tv.number_of_seasons} saison{tv.number_of_seasons > 1 ? 's' : ''}</span>
+              </span>
+            )}
+            {tv.number_of_episodes && (
+              <span>{tv.number_of_episodes} épisodes</span>
+            )}
+            {formatEpisodeRuntime(tv.episode_run_time) && (
+              <span className="flex items-center space-x-1">
+                <Clock className="w-5 h-5" />
+                <span>{formatEpisodeRuntime(tv.episode_run_time)}</span>
+              </span>
+            )}
+            <span>{tv.genres?.map(g => g.name).join(", ")}</span>
+            
+            {tv.vote_average > 0 && (
+              <span className="flex items-center space-x-1">
+                <Star className="w-5 h-5 fill-current" />
+                <span>{tv.vote_average.toFixed(1)}</span>
+              </span>
+            )}
+          </div>
+          
+          <p className="text-white/90 text-lg mb-8 leading-relaxed" data-testid="tv-overview">
+            {tv.overview}
+          </p>
+          
+          <div className="flex flex-wrap gap-4" data-testid="tv-actions">
+            <Link href={`/watch/tv/${tv.id}/1/1`}>
+              <Button className="btn-primary flex items-center space-x-2" data-testid="button-watch">
+                <Play className="w-5 h-5" />
+                <span>Regarder</span>
+              </Button>
+            </Link>
+            
+            <Button
+              variant="secondary"
+              onClick={handleToggleFavorite}
+              disabled={isAddingToFavorites}
+              className="flex items-center space-x-2"
+              data-testid="button-favorite"
+            >
+              <Heart className={`w-5 h-5 ${isFavorite ? "fill-current" : ""}`} />
+              <span>{isFavorite ? "Dans les favoris" : "Ajouter aux favoris"}</span>
+            </Button>
+            
+            <Button
+              variant="secondary"
+              onClick={handleAddToList}
+              className="flex items-center space-x-2"
+              data-testid="button-add-list"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Ajouter à ma liste</span>
+            </Button>
+            
+            <Button
+              variant="secondary"
+              onClick={handleShare}
+              className="flex items-center space-x-2"
+              data-testid="button-share"
+            >
+              <Share2 className="w-5 h-5" />
+              <span>Partager</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+      
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Advertisement Banner for unauthenticated users */}
+        {/* Removed as per user request - ads should only appear in video players */}
+        
+        {/* Cast Section */}
+        {cast.length > 0 && (
+          <section className="mb-12" data-testid="tv-cast">
+            <h2 className="text-2xl font-bold text-foreground mb-6">Acteurs</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-4">
+              {cast.map((person) => (
+                <div key={person.id} className="text-center" data-testid={`cast-member-${person.id}`}>
+                  <div className="relative pb-[150%] mb-3 rounded-md overflow-hidden">
+                    <img
+                      src={tmdbService.getProfileUrl(person.profile_path)}
+                      alt={person.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = "/placeholder-profile.jpg";
+                      }}
+                    />
+                  </div>
+                  <h3 className="font-medium text-foreground text-sm line-clamp-1" data-testid={`cast-name-${person.id}`}>
+                    {person.name}
+                  </h3>
+                  <p className="text-muted-foreground text-xs line-clamp-1" data-testid={`cast-character-${person.id}`}>
+                    {person.character}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        
+        {/* Seasons Section */}
+        {tv.seasons && tv.seasons.length > 0 && (
+          <div className="mt-8">
+            <h3 className="text-xl font-bold mb-4">Saisons</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {tv.seasons.map((season: any) => (
+                <div 
+                  key={season.id} 
+                  className="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/watch/tv/${tv.id}/${season.season_number}/1`)}
+                >
+                  <div className="flex items-center gap-4">
+                    {season.poster_path ? (
+                      <img 
+                        src={`https://image.tmdb.org/t/p/w200${season.poster_path}`}
+                        alt={season.name}
+                        className="w-16 h-24 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="w-16 h-24 bg-gray-700 rounded flex items-center justify-center">
+                        <Tv className="w-8 h-8 text-gray-500" />
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="font-semibold">{season.name}</h4>
+                      <p className="text-sm text-gray-400">{season.episode_count} épisodes</p>
+                      {season.air_date && (
+                        <p className="text-xs text-gray-500">
+                          {new Date(season.air_date).getFullYear()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Similar Shows */}
+        {similarShows && similarShows.length > 0 && (
+          <section data-testid="similar-shows">
+            <TVRow
+              title="Séries Similaires"
+              series={similarShows}
+              isLoading={false}
+            />
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,991 @@
+import { 
+  users, 
+  favorites, 
+  watchHistory, 
+  userPreferences,
+  contactMessages,
+  subscriptions,
+  payments,
+  banners,
+  collections,
+  content,
+  notifications,
+  userSessions,
+  viewTracking,
+  type User, 
+  type InsertUser, 
+  type Favorite, 
+  type InsertFavorite,
+  type WatchHistory,
+  type InsertWatchHistory,
+  type UserPreferences,
+  type InsertUserPreferences,
+  type ContactMessage,
+  type InsertContactMessage,
+  type Subscription,
+  type InsertSubscription,
+  type Payment,
+  type InsertPayment,
+  type Banner,
+  type InsertBanner,
+  type Collection,
+  type InsertCollection,
+  type Content,
+  type InsertContent,
+  type Notification,
+  type InsertNotification,
+  type UserSession,
+  type InsertUserSession,
+  type ViewTracking,
+  type InsertViewTracking
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and, sql } from "drizzle-orm";
+
+export interface IStorage {
+  // Users
+  getUser(id: string): Promise<User | undefined>;
+  getUserById(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  banUser(userId: string): Promise<User>;
+  unbanUser(userId: string): Promise<User>;
+  
+  // Favorites
+  getFavorites(userId: string): Promise<Favorite[]>;
+  getAllFavorites(): Promise<Favorite[]>;
+  addFavorite(favorite: InsertFavorite): Promise<Favorite>;
+  removeFavorite(userId: string, movieId: number): Promise<void>;
+  isFavorite(userId: string, movieId: number): Promise<boolean>;
+  
+  // Watch History
+  getWatchHistory(userId: string): Promise<WatchHistory[]>;
+  addToWatchHistory(history: InsertWatchHistory): Promise<WatchHistory>;
+  
+  // User Preferences
+  getUserPreferences(userId: string): Promise<UserPreferences | undefined>;
+  updateUserPreferences(userId: string, preferences: Partial<InsertUserPreferences>): Promise<UserPreferences>;
+  
+  // Contact Messages
+  createContactMessage(message: InsertContactMessage): Promise<ContactMessage>;
+  getContactMessages(): Promise<ContactMessage[]>;
+  deleteContactMessage(messageId: string): Promise<void>;
+  
+  // Subscriptions
+  createSubscription(subscription: InsertSubscription): Promise<Subscription>;
+  getSubscriptions(): Promise<Subscription[]>;
+  getUserSubscription(userId: string): Promise<Subscription | undefined>;
+  getSubscriptionByUserId(userId: string): Promise<Subscription | undefined>;
+  cancelSubscription(subscriptionId: string): Promise<void>;
+  updateSubscription(subscriptionId: string, data: Partial<InsertSubscription>): Promise<Subscription>;
+  
+  // Payments
+  createPayment(payment: InsertPayment): Promise<Payment>;
+  getPayments(): Promise<Payment[]>;
+  getUserPayments(userId: string): Promise<Payment[]>;
+  
+  // Banners
+  createBanner(banner: InsertBanner): Promise<Banner>;
+  getBanners(): Promise<Banner[]>;
+  updateBanner(bannerId: string, data: Partial<InsertBanner>): Promise<Banner>;
+  deleteBanner(bannerId: string): Promise<void>;
+  
+  // Collections
+  createCollection(collection: InsertCollection): Promise<Collection>;
+  getCollections(): Promise<Collection[]>;
+  updateCollection(collectionId: string, data: Partial<InsertCollection>): Promise<Collection>;
+  deleteCollection(collectionId: string): Promise<void>;
+  
+  // Content Management
+  createContent(content: InsertContent): Promise<Content>;
+  getContent(): Promise<Content[]>;
+  getAllContent(): Promise<Content[]>;
+  getContentById(contentId: string): Promise<Content | undefined>;
+  updateContent(contentId: string, data: Partial<InsertContent>): Promise<Content>;
+  deleteContent(contentId: string): Promise<void>;
+  getContentByTmdbId(tmdbId: number): Promise<Content | undefined>;
+  
+  // Episode Management
+  createEpisode(episode: any): Promise<any>;
+  getEpisodesByContentId(contentId: string): Promise<any[]>;
+  getEpisodeById(episodeId: string): Promise<any | undefined>;
+  updateEpisode(episodeId: string, data: Partial<any>): Promise<any>;
+  deleteEpisode(episodeId: string): Promise<void>;
+
+  // Notifications
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  getUserNotifications(userId: string): Promise<Notification[]>;
+  getNotificationById(notificationId: string): Promise<Notification | undefined>;
+  getAllNotifications(): Promise<Notification[]>;
+  markNotificationRead(notificationId: string): Promise<void>;
+  deleteNotification(notificationId: string): Promise<void>;
+  
+  // User Management
+  updateUser(userId: string, updates: Partial<InsertUser>): Promise<User>;
+  updateUserStatus(userId: string, status: 'active' | 'suspended' | 'banned'): Promise<User>;
+  updateUserSubscriptionPlan(userId: string, planId: string): Promise<void>;
+  
+  // User Sessions
+  createUserSession(session: InsertUserSession): Promise<UserSession>;
+  getActiveSessions(): Promise<UserSession[]>;
+  endUserSession(sessionId: string): Promise<void>;
+  
+  // View Tracking
+  createViewTracking(view: InsertViewTracking): Promise<ViewTracking>;
+  getViewStats(): Promise<{dailyViews: number, weeklyViews: number}>;
+}
+
+export class DatabaseStorage implements IStorage {
+  // Users
+  async getUser(id: string): Promise<User | undefined> {
+    // Validate input to prevent injection
+    if (!id || typeof id !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserById(id: string): Promise<User | undefined> {
+    return this.getUser(id);
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    // Validate input to prevent injection
+    if (!username || typeof username !== 'string') {
+      throw new Error('Invalid username');
+    }
+    
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    // Validate input to prevent injection
+    if (!email || typeof email !== 'string') {
+      throw new Error('Invalid email');
+    }
+    
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    // Validate input
+    if (!insertUser.username || !insertUser.email || !insertUser.password) {
+      throw new Error('Missing required user fields');
+    }
+    
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async banUser(userId: string): Promise<User> {
+    // Validate input
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    const [user] = await db
+      .update(users)
+      .set({ banned: true } as Partial<User>)
+      .where(eq(users.id, userId))
+      .returning();
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    return user;
+  }
+
+  async unbanUser(userId: string): Promise<User> {
+    // Validate input
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    const [user] = await db
+      .update(users)
+      .set({ banned: false } as Partial<User>)
+      .where(eq(users.id, userId))
+      .returning();
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    return user;
+  }
+
+  async updateUser(userId: string, updates: Partial<InsertUser>): Promise<User> {
+    // Validate input
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    const [user] = await db
+      .update(users)
+      .set(updates as any)
+      .where(eq(users.id, userId))
+      .returning();
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    return user;
+  }
+
+  // Favorites
+  async getFavorites(userId: string): Promise<Favorite[]> {
+    // Validate input
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    return await db
+      .select()
+      .from(favorites)
+      .where(eq(favorites.userId, userId))
+      .orderBy(desc(favorites.addedAt));
+  }
+
+  async addFavorite(favorite: InsertFavorite): Promise<Favorite> {
+    // Validate input
+    if (!favorite.userId || !favorite.movieId) {
+      throw new Error('Missing required favorite fields');
+    }
+    
+    const [newFavorite] = await db.insert(favorites).values(favorite as any).returning();
+    return newFavorite;
+  }
+
+  async removeFavorite(userId: string, movieId: number): Promise<void> {
+    // Validate input
+    if (!userId || typeof userId !== 'string' || !movieId || typeof movieId !== 'number') {
+      throw new Error('Invalid user ID or movie ID');
+    }
+    
+    await db
+      .delete(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.movieId, movieId)));
+  }
+
+  async isFavorite(userId: string, movieId: number): Promise<boolean> {
+    // Validate input
+    if (!userId || typeof userId !== 'string' || !movieId || typeof movieId !== 'number') {
+      throw new Error('Invalid user ID or movie ID');
+    }
+    
+    const [favorite] = await db
+      .select()
+      .from(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.movieId, movieId)));
+    return !!favorite;
+  }
+
+  async getAllFavorites(): Promise<Favorite[]> {
+    return await db.select().from(favorites).orderBy(desc(favorites.addedAt));
+  }
+
+  // Watch History
+  async getWatchHistory(userId: string): Promise<WatchHistory[]> {
+    return await db
+      .select()
+      .from(watchHistory)
+      .where(eq(watchHistory.userId, userId))
+      .orderBy(desc(watchHistory.watchedAt));
+  }
+
+  async addToWatchHistory(history: InsertWatchHistory): Promise<WatchHistory> {
+    const [newHistory] = await db.insert(watchHistory).values(history).returning();
+    return newHistory;
+  }
+
+  // User Preferences
+  async getUserPreferences(userId: string): Promise<UserPreferences | undefined> {
+    const [prefs] = await db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId));
+    return prefs || undefined;
+  }
+
+  async updateUserPreferences(userId: string, preferences: Partial<InsertUserPreferences>): Promise<UserPreferences> {
+    const existingPrefs = await this.getUserPreferences(userId);
+    
+    if (existingPrefs) {
+      const [updated] = await db
+        .update(userPreferences)
+        .set(preferences as any)
+        .where(eq(userPreferences.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(userPreferences)
+        .values({ userId, ...preferences } as any)
+        .returning();
+      return created;
+    }
+  }
+
+  // Contact Messages
+  async createContactMessage(message: InsertContactMessage): Promise<ContactMessage> {
+    const [newMessage] = await db.insert(contactMessages).values(message).returning();
+    return newMessage;
+  }
+
+  async getContactMessages(): Promise<ContactMessage[]> {
+    return await db
+      .select()
+      .from(contactMessages)
+      .orderBy(desc(contactMessages.createdAt));
+  }
+
+  async deleteContactMessage(messageId: string): Promise<void> {
+    await db.delete(contactMessages).where(eq(contactMessages.id, messageId));
+  }
+
+  // Subscriptions
+  async createSubscription(subscription: InsertSubscription): Promise<Subscription> {
+    const [newSubscription] = await db.insert(subscriptions).values(subscription as any).returning();
+    return newSubscription;
+  }
+
+  async getSubscriptions(): Promise<Subscription[]> {
+    return await db.select().from(subscriptions).orderBy(desc(subscriptions.createdAt));
+  }
+
+  async getUserSubscription(userId: string): Promise<Subscription | undefined> {
+    const [subscription] = await db
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active')))
+      .orderBy(desc(subscriptions.createdAt));
+    return subscription || undefined;
+  }
+
+  async updateSubscription(subscriptionId: string, data: Partial<InsertSubscription>): Promise<Subscription> {
+    const [updated] = await db
+      .update(subscriptions)
+      .set(data as any)
+      .where(eq(subscriptions.id, subscriptionId))
+      .returning();
+    return updated;
+  }
+
+  async getSubscriptionByUserId(userId: string): Promise<Subscription | undefined> {
+    const [subscription] = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, userId))
+      .orderBy(desc(subscriptions.createdAt));
+    return subscription || undefined;
+  }
+
+  async cancelSubscription(subscriptionId: string): Promise<void> {
+    await db
+      .update(subscriptions)
+      .set({ status: 'cancelled' } as Partial<Subscription>)
+      .where(eq(subscriptions.id, subscriptionId));
+  }
+
+  // Payments
+  async createPayment(payment: InsertPayment): Promise<Payment> {
+    const [newPayment] = await db.insert(payments).values(payment as any).returning();
+    return newPayment;
+  }
+
+  async getPayments(): Promise<Payment[]> {
+    return await db.select().from(payments).orderBy(desc(payments.createdAt));
+  }
+
+  async getUserPayments(userId: string): Promise<Payment[]> {
+    return await db
+      .select()
+      .from(payments)
+      .where(eq(payments.userId, userId))
+      .orderBy(desc(payments.createdAt));
+  }
+
+  // Banners
+  async createBanner(banner: InsertBanner): Promise<Banner> {
+    const [newBanner] = await db.insert(banners).values(banner as any).returning();
+    return newBanner;
+  }
+
+  async getBanners(): Promise<Banner[]> {
+    return await db.select().from(banners).orderBy(desc(banners.priority));
+  }
+
+  // Add missing banner functions
+  async getBannerById(id: string): Promise<Banner | undefined> {
+    const [banner] = await db.select().from(banners).where(eq(banners.id, id));
+    return banner || undefined;
+  }
+
+  async getBannersByCollectionId(collectionId: string): Promise<Banner[]> {
+    return await db
+      .select()
+      .from(banners)
+      .where(eq(banners.collectionId, collectionId))
+      .orderBy(desc(banners.priority));
+  }
+
+  async updateBanner(bannerId: string, data: Partial<InsertBanner>): Promise<Banner> {
+    const [updated] = await db
+      .update(banners)
+      .set(data as any)
+      .where(eq(banners.id, bannerId))
+      .returning();
+    return updated;
+  }
+
+  async deleteBanner(bannerId: string): Promise<void> {
+    await db.delete(banners).where(eq(banners.id, bannerId));
+  }
+
+  // Collections
+  async createCollection(collection: InsertCollection): Promise<Collection> {
+    const [newCollection] = await db.insert(collections).values(collection as any).returning();
+    return newCollection;
+  }
+
+  async getCollections(): Promise<Collection[]> {
+    return await db.select().from(collections).orderBy(desc(collections.createdAt));
+  }
+
+  // Add missing collection functions
+  async getAllCollections(): Promise<Collection[]> {
+    return await db.select().from(collections).orderBy(desc(collections.createdAt));
+  }
+
+  async getCollectionById(id: string): Promise<Collection | undefined> {
+    const [collection] = await db.select().from(collections).where(eq(collections.id, id));
+    return collection || undefined;
+  }
+
+  async updateCollection(collectionId: string, data: Partial<InsertCollection>): Promise<Collection> {
+    const [updated] = await db
+      .update(collections)
+      .set(data as any)
+      .where(eq(collections.id, collectionId))
+      .returning();
+    return updated;
+  }
+
+  async deleteCollection(collectionId: string): Promise<void> {
+    await db.delete(collections).where(eq(collections.id, collectionId));
+  }
+
+  // Add missing content functions
+  async getContentsByCollectionId(collectionId: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(eq(content.collectionId, collectionId))
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getContentBySlug(slug: string): Promise<Content | undefined> {
+    const [item] = await db
+      .select()
+      .from(content)
+      .where(eq(content.slug, slug));
+    return item || undefined;
+  }
+
+  async getContentByType(type: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(eq(content.mediaType, type))
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getContentByGenre(genre: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(sql`genres LIKE ${'%' + genre + '%'}`)
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getContentByYear(year: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(sql`release_date LIKE ${year + '%'}`)
+      .orderBy(desc(content.createdAt));
+  }
+
+  // Notifications
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(notifications).values(notification as any).returning();
+    return newNotification;
+  }
+
+  async getUserNotifications(userId: string): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async getNotificationById(notificationId: string): Promise<Notification | undefined> {
+    const [notification] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.id, notificationId));
+    return notification || undefined;
+  }
+
+  async getAllNotifications(): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async markNotificationRead(notificationId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.id, notificationId));
+  }
+
+  async deleteNotification(notificationId: string): Promise<void> {
+    await db.delete(notifications).where(eq(notifications.id, notificationId));
+  }
+
+  // Add missing notification functions
+  async getNotificationsByUserId(userId: string): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  // Add missing user session functions
+  async getUserSessionByToken(token: string): Promise<UserSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.token, token));
+    return session || undefined;
+  }
+
+  async getUserSessionByUserId(userId: string): Promise<UserSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.userId, userId))
+      .orderBy(desc(userSessions.sessionStart));
+    return session || undefined;
+  }
+
+  // Add missing view tracking functions
+  async getViewTrackingByUserId(userId: string): Promise<ViewTracking[]> {
+    return await db
+      .select()
+      .from(viewTracking)
+      .where(eq(viewTracking.userId, userId))
+      .orderBy(desc(viewTracking.viewDate));
+  }
+
+  // Notifications
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(notifications).values(notification as any).returning();
+    return newNotification;
+  }
+
+  async getUserNotifications(userId: string): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async getNotificationById(notificationId: string): Promise<Notification | undefined> {
+    const [notification] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.id, notificationId));
+    return notification || undefined;
+  }
+
+  async getAllNotifications(): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async markNotificationRead(notificationId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.id, notificationId));
+  }
+
+  async deleteNotification(notificationId: string): Promise<void> {
+    await db.delete(notifications).where(eq(notifications.id, notificationId));
+  }
+
+  // Add missing delete functions
+  async deleteUserPreferences(id: string): Promise<void> {
+    await db.delete(userPreferences).where(eq(userPreferences.id, id));
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
+  }
+
+  async deleteSubscription(id: string): Promise<void> {
+    await db.delete(subscriptions).where(eq(subscriptions.id, id));
+  }
+
+  async deletePayment(id: string): Promise<void> {
+    await db.delete(payments).where(eq(payments.id, id));
+  }
+
+  async deleteUserSession(id: string): Promise<void> {
+    await db.delete(userSessions).where(eq(userSessions.id, id));
+  }
+
+  async deleteViewTracking(id: string): Promise<void> {
+    await db.delete(viewTracking).where(eq(viewTracking.id, id));
+  }
+
+  // User Management
+  async updateUser(userId: string, updates: Partial<InsertUser>): Promise<User> {
+    // Validate input
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    const [user] = await db
+      .update(users)
+      .set(updates as any)
+      .where(eq(users.id, userId))
+      .returning();
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    return user;
+  }
+
+  async updateUserStatus(userId: string, status: 'active' | 'suspended' | 'banned'): Promise<User> {
+    // Note: We'll need to add a status field to users table, for now we'll just return the user
+    const user = await this.getUserById(userId);
+    if (!user) throw new Error('User not found');
+    return user;
+  }
+
+  async updateUserSubscriptionPlan(userId: string, planId: string): Promise<void> {
+    // Update current subscription status to cancelled
+    await db
+      .update(subscriptions)
+      .set({ status: 'cancelled' })
+      .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active')));
+    
+    // Create new subscription based on plan
+    const planPrices = { basic: 2500, standard: 4500, premium: 7500 };
+    const amount = planPrices[planId as keyof typeof planPrices] || 2500;
+    
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+    
+    await this.createSubscription({
+      userId,
+      planId,
+      amount,
+      paymentMethod: 'admin_update',
+      status: 'active',
+      startDate: new Date(),
+      endDate
+    });
+  }
+  
+  // User Sessions
+  async createUserSession(session: InsertUserSession): Promise<UserSession> {
+    const [newSession] = await db.insert(userSessions).values(session as any).returning();
+    return newSession;
+  }
+
+  async getActiveSessions(): Promise<UserSession[]> {
+    return await db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.isActive, true))
+      .orderBy(desc(userSessions.sessionStart));
+  }
+
+  async endUserSession(sessionId: string): Promise<void> {
+    await db
+      .update(userSessions)
+      .set({ 
+        isActive: false, 
+        sessionEnd: new Date()
+      })
+      .where(eq(userSessions.id, sessionId));
+  }
+  
+  // View Tracking
+  async createViewTracking(view: InsertViewTracking): Promise<ViewTracking> {
+    const [newView] = await db.insert(viewTracking).values(view as any).returning();
+    return newView;
+  }
+
+  async getViewStats(): Promise<{dailyViews: number, weeklyViews: number}> {
+    try {
+      const [daily] = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(viewTracking)
+        .where(sql`${viewTracking.viewDate} >= NOW() - INTERVAL '1 day'`);
+
+      const [weekly] = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(viewTracking)
+        .where(sql`${viewTracking.viewDate} >= NOW() - INTERVAL '7 days'`);
+
+      return {
+        dailyViews: Number(daily?.count ?? 0),
+        weeklyViews: Number(weekly?.count ?? 0)
+      };
+    } catch (error) {
+      console.error('Error fetching view stats:', error);
+      return { dailyViews: 0, weeklyViews: 0 };
+    }
+  }
+  
+  // Content Management
+  async createContent(insertContent: InsertContent): Promise<Content> {
+    const [newContent] = await db.insert(content).values(insertContent as any).returning();
+    return newContent;
+  }
+
+  async getContent(): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(eq(content.active, true))
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getContentById(contentId: string): Promise<Content | undefined> {
+    const [item] = await db
+      .select()
+      .from(content)
+      .where(eq(content.id, contentId));
+    return item || undefined;
+  }
+
+  async updateContent(contentId: string, data: Partial<InsertContent>): Promise<Content> {
+    const [updated] = await db
+      .update(content)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(content.id, contentId))
+      .returning();
+    return updated;
+  }
+
+  async deleteContent(contentId: string): Promise<void> {
+    await db
+      .update(content)
+      .set({ active: false, updatedAt: new Date() })
+      .where(eq(content.id, contentId));
+  }
+
+  async getContentByTmdbId(tmdbId: number): Promise<Content | undefined> {
+    const [item] = await db
+      .select()
+      .from(content)
+      .where(and(eq(content.tmdbId, tmdbId), eq(content.active, true)));
+    return item || undefined;
+  }
+
+  // New method to get content by TMDB ID regardless of active status (for debugging)
+  async getContentByTmdbIdAnyStatus(tmdbId: number): Promise<Content | undefined> {
+    const [item] = await db
+      .select()
+      .from(content)
+      .where(eq(content.tmdbId, tmdbId));
+    return item || undefined;
+  }
+
+  // New method to get content by URL (for debugging)
+  async getContentByOdyseeUrl(url: string): Promise<Content | undefined> {
+    const [item] = await db
+      .select()
+      .from(content)
+      .where(eq(content.odyseeUrl, url));
+    return item || undefined;
+  }
+
+  async getAllContent(): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .orderBy(desc(content.createdAt));
+  }
+  
+  // Add missing content functions
+  async getBannerById(id: string): Promise<Banner | undefined> {
+    const [banner] = await db.select().from(banners).where(eq(banners.id, id));
+    return banner || undefined;
+  }
+
+  async getBannersByCollectionId(collectionId: string): Promise<Banner[]> {
+    return await db
+      .select()
+      .from(banners)
+      .where(eq(banners.collectionId, collectionId))
+      .orderBy(desc(banners.priority));
+  }
+
+  async getAllCollections(): Promise<Collection[]> {
+    return await db.select().from(collections).orderBy(desc(collections.createdAt));
+  }
+
+  async getCollectionById(id: string): Promise<Collection | undefined> {
+    const [collection] = await db.select().from(collections).where(eq(collections.id, id));
+    return collection || undefined;
+  }
+
+  async getContentsByCollectionId(collectionId: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(eq(content.collectionId, collectionId))
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getContentBySlug(slug: string): Promise<Content | undefined> {
+    const [item] = await db
+      .select()
+      .from(content)
+      .where(eq(content.slug, slug));
+    return item || undefined;
+  }
+
+  async getContentByType(type: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(eq(content.mediaType, type))
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getContentByGenre(genre: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(sql`genres LIKE ${'%' + genre + '%'}`)
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getContentByYear(year: string): Promise<Content[]> {
+    return await db
+      .select()
+      .from(content)
+      .where(sql`release_date LIKE ${year + '%'}`)
+      .orderBy(desc(content.createdAt));
+  }
+
+  async getNotificationsByUserId(userId: string): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async getUserSessionByToken(token: string): Promise<UserSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.token, token));
+    return session || undefined;
+  }
+
+  async getUserSessionByUserId(userId: string): Promise<UserSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.userId, userId))
+      .orderBy(desc(userSessions.sessionStart));
+    return session || undefined;
+  }
+
+  async getViewTrackingByUserId(userId: string): Promise<ViewTracking[]> {
+    return await db
+      .select()
+      .from(viewTracking)
+      .where(eq(viewTracking.userId, userId))
+      .orderBy(desc(viewTracking.viewDate));
+  }
+  
+  // Episode Management
+  async createEpisode(episode: any): Promise<any> {
+    // Import episodes table
+    const { episodes } = await import('@shared/schema');
+    const [newEpisode] = await db.insert(episodes).values(episode).returning();
+    return newEpisode;
+  }
+
+  async getEpisodesByContentId(contentId: string): Promise<any[]> {
+    // Import episodes table
+    const { episodes } = await import('@shared/schema');
+    return await db
+      .select()
+      .from(episodes)
+      .where(eq(episodes.contentId, contentId))
+      .orderBy(episodes.seasonNumber, episodes.episodeNumber);
+  }
+
+  async getEpisodeById(episodeId: string): Promise<any | undefined> {
+    // Import episodes table
+    const { episodes } = await import('@shared/schema');
+    const [episode] = await db
+      .select()
+      .from(episodes)
+      .where(eq(episodes.id, episodeId));
+    return episode || undefined;
+  }
+
+  async updateEpisode(episodeId: string, data: Partial<any>): Promise<any> {
+    // Import episodes table
+    const { episodes } = await import('@shared/schema');
+    const [updated] = await db
+      .update(episodes)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(episodes.id, episodeId))
+      .returning();
+    return updated;
+  }
+
+  async deleteEpisode(episodeId: string): Promise<void> {
+    // Import episodes table
+    const { episodes } = await import('@shared/schema');
+    await db
+      .delete(episodes)
+      .where(eq(episodes.id, episodeId));
+  }
+}
+
+export const storage = new DatabaseStorage();

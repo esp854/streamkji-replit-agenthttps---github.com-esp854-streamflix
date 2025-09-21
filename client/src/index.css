@@ -1,0 +1,166 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import './styles/animations.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0 0% 8%);
+  --foreground: hsl(0 0% 98%);
+  --card: hsl(0 0% 13%);
+  --card-foreground: hsl(0 0% 98%);
+  --popover: hsl(0 0% 8%);
+  --popover-foreground: hsl(0 0% 98%);
+  --primary: hsl(348 91% 49%);
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(0 0% 20%);
+  --secondary-foreground: hsl(0 0% 70%);
+  --muted: hsl(0 0% 15%);
+  --muted-foreground: hsl(0 0% 70%);
+  --accent: hsl(0 100% 50%);
+  --accent-foreground: hsl(0 0% 98%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --border: hsl(0 0% 25%);
+  --input: hsl(0 0% 15%);
+  --ring: hsl(348 91% 49%);
+  --radius: 8px;
+  
+  /* StreamFlix specific variables */
+  --netflix-red: hsl(348 91% 49%);
+  --dark-bg: hsl(0 0% 8%);
+  --card-bg: hsl(0 0% 13%);
+  --text-primary: hsl(0 0% 98%);
+  --text-secondary: hsl(0 0% 70%);
+  
+  /* Blue background variant */
+  --blue-background: hsl(220 20% 15%);
+  
+  /* Font families */
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+}
+
+.dark {
+  --background: hsl(0 0% 8%);
+  --foreground: hsl(0 0% 98%);
+  --card: hsl(0 0% 13%);
+  --card-foreground: hsl(0 0% 98%);
+  --popover: hsl(0 0% 8%);
+  --popover-foreground: hsl(0 0% 98%);
+  --primary: hsl(348 91% 49%);
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(0 0% 20%);
+  --secondary-foreground: hsl(0 0% 70%);
+  --muted: hsl(0 0% 15%);
+  --muted-foreground: hsl(0 0% 70%);
+  --accent: hsl(0 100% 50%);
+  --accent-foreground: hsl(0 0% 98%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --border: hsl(0 0% 25%);
+  --input: hsl(0 0% 15%);
+  --ring: hsl(348 91% 49%);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    @apply font-sans antialiased overflow-x-hidden;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-red-600 text-primary-foreground font-semibold py-3 px-6 rounded-md transition-all duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary hover:bg-gray-600 text-foreground font-semibold py-3 px-6 rounded-md transition-all duration-200;
+  }
+}
+
+/* Custom animations */
+@keyframes slide {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+.slide-animation {
+  animation: slide 30s linear infinite;
+}
+
+.pause-animation {
+  animation-play-state: paused;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(0 0% 13%);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(0 0% 30%);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(348 91% 49%);
+}
+
+/* Gradient overlays */
+.gradient-overlay {
+  background: linear-gradient(to right, rgba(20, 20, 20, 1) 0%, rgba(20, 20, 20, 0.8) 30%, rgba(20, 20, 20, 0.3) 70%, rgba(20, 20, 20, 0) 100%);
+}
+
+.gradient-bottom {
+  background: linear-gradient(to top, rgba(20, 20, 20, 1) 0%, rgba(20, 20, 20, 0) 100%);
+}
+
+/* Hide scrollbar for horizontal scroll containers */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Movie card hover effects */
+.movie-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.movie-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
