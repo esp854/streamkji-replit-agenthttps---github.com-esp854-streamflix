@@ -41,7 +41,7 @@ npm run dev
 npm start
 ```
 
-Le serveur démarrera sur le port 5000.
+Le serveur démarrera sur le port spécifié par la variable d'environnement PORT, ou sur le port 3000 par défaut.
 
 ## 📡 Endpoints API
 
