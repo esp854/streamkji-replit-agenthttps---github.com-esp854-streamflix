@@ -124,3 +124,44 @@ Toutes les erreurs sont enregistrées dans la console pour faciliter le débogag
 Pour toute question sur l'intégration :
 - Documentation Lygos : https://docs.lygos.app
 - Support Lygos : support@lygos.app
+
+```
+
+```
+
+```
+# Backend Lygos Payment
+
+Backend pour l'intégration des paiements Lygos avec Express.js
+
+## 🚀 Démarrage
+
+```
+npm install
+npm start
+```
+
+Le serveur démarrera sur le port spécifié par la variable d'environnement PORT, ou sur le port 3000 par défaut.
+
+## 🗄️ Configuration de la Base de Données
+
+Pour utiliser une base de données PostgreSQL avec Render, configurez la variable d'environnement `DATABASE_URL` :
+
+```
+DATABASE_URL=postgresql://username:password@host:port/database
+```
+
+Le code backend utilise `DATABASE_URL` avec la configuration SSL appropriée pour Render :
+
+```javascript
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { 
+    rejectUnauthorized: false // important pour Render
+  },
+});
+
+```
+
