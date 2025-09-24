@@ -6,6 +6,7 @@ import notificationsRoutes from "./routes/notifications.js";
 import adminRoutes from "./routes/admin.js";
 import tmdbRoutes from "./routes/tmdb.js";
 import authRoutes from "./routes/auth.js";
+import bannersRoutes from "./routes/banners.js";
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +26,7 @@ app.use("/api", notificationsRoutes);
 app.use("/api", adminRoutes);
 app.use("/api", tmdbRoutes);
 app.use("/api", authRoutes);
+app.use("/api", bannersRoutes);
 
 // Use PORT environment variable or default to 3000
 const PORT = process.env.PORT || 3000;
