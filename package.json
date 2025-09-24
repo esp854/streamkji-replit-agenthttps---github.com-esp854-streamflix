@@ -19,6 +19,7 @@
     "init-db": "tsx server/init-db.ts",
     "migrate": "tsx server/migrate.ts",
     "check-postgres": "tsx server/check-postgres.ts",
+    "check-render-db": "tsx server/check-render-db.ts",
     "import-content": "tsx server/import-content.ts",
     "import-marvel": "tsx server/import-content.ts Marvel",
     "test-import": "tsx server/test-import.ts",
@@ -27,7 +28,7 @@
     "check-import-status": "tsx server/check-import-status.ts",
     "test-video-support": "tsx server/test-video-support.ts",
     "fix-video-urls": "tsx server/fix-video-urls.ts",
-    "post-deploy": "node scripts/post-deploy.js"
+    "post-deploy": "tsx scripts/post-deploy.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

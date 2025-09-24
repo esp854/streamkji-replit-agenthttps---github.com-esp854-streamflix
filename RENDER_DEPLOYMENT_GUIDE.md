@@ -55,9 +55,16 @@ SESSION_SECRET=une_autre_chaîne_aléatoire_pour_les_sessions
 
 ### 6. Initialiser la base de données
 
+**Option A : Via le script automatique (recommandé)**
+1. Le script de post-déploiement s'exécute automatiquement après chaque déploiement
+2. Vérifiez les logs de déploiement pour voir si tout s'est bien passé
+3. Si le script échoue, utilisez l'option manuelle ci-dessous
+
+**Option B : Via le shell Render (si nécessaire)**
 1. Une fois le déploiement terminé, allez dans l'onglet "Shell" de votre service web
-2. Exécutez la commande : `npm run db:push`
-3. Créez un utilisateur administrateur : `npm run create-admin -- "admin_username" "admin_email" "admin_password"`
+2. Vérifiez l'état de la base de données : `npm run check-render-db`
+3. Créez les tables : `npm run db:push`
+4. Créez un utilisateur administrateur : `npm run create-admin`
 
 ## Configuration des emails
 
@@ -102,10 +109,46 @@ Pour mettre à jour votre application :
    - Consultez les journaux dans l'onglet "Logs"
    - Vérifiez que toutes les variables d'environnement requises sont définies
 
+### Problèmes de connexion admin
+
+Si vous ne pouvez pas vous connecter en tant qu'admin :
+
+1. **Vérifiez que l'utilisateur admin existe** :
+   ```bash
+   npm run check-render-db
+   ```
+
+2. **Créez l'utilisateur admin manuellement** :
+   ```bash
+   npm run create-admin
+   ```
+
+3. **Informations de connexion par défaut** :
+   - Email : `admin@streamkji.com`
+   - Mot de passe : `admin123`
+   - ⚠️ Changez ce mot de passe après la première connexion !
+
+### Erreurs 500 sur les API
+
+Si vous obtenez des erreurs 500 :
+
+1. **Vérifiez la connexion à la base de données** :
+   ```bash
+   npm run check-render-db
+   ```
+
+2. **Créez les tables si manquantes** :
+   ```bash
+   npm run db:push
+   ```
+
+3. **Redémarrez le service** : Forcez un redéploiement depuis Render
+
 ### Support
 
 Si vous rencontrez des problèmes avec le déploiement :
 
 1. Consultez les journaux de déploiement
 2. Vérifiez que toutes les étapes de ce guide ont été suivies
-3. Contactez le support Render si le problème persiste
+3. Utilisez les commandes de diagnostic : `npm run check-render-db`
+4. Contactez le support Render si le problème persiste
