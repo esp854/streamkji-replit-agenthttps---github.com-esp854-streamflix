@@ -55,7 +55,12 @@ SESSION_SECRET=une_autre_chaîne_aléatoire_pour_les_sessions
 
 ### 6. Initialiser la base de données
 
-**Option A : Via le script automatique (recommandé)**
+**Option A : Initialisation automatique (recommandée)**
+1. L'application crée automatiquement l'utilisateur admin au premier démarrage
+2. Vérifiez les logs de démarrage pour voir si l'admin a été créé
+3. L'admin sera disponible immédiatement après le déploiement
+
+**Option B : Via le script de post-déploiement**
 1. Le script de post-déploiement s'exécute automatiquement après chaque déploiement
 2. Vérifiez les logs de déploiement pour voir si tout s'est bien passé
 3. Si le script échoue, utilisez l'option manuelle ci-dessous
@@ -65,6 +70,11 @@ SESSION_SECRET=une_autre_chaîne_aléatoire_pour_les_sessions
 2. Vérifiez l'état de la base de données : `npm run check-render-db`
 3. Créez les tables : `npm run db:push`
 4. Créez un utilisateur administrateur : `npm run create-admin`
+
+**Option C : Création directe dans la base de données (recommandé)**
+Si les options précédentes ne fonctionnent pas :
+1. Dans le shell Render : `npm run create-admin-direct`
+2. Cette commande crée/modifie l'admin directement dans PostgreSQL
 
 ## Configuration des emails
 
@@ -118,15 +128,21 @@ Si vous ne pouvez pas vous connecter en tant qu'admin :
    npm run check-render-db
    ```
 
-2. **Créez l'utilisateur admin manuellement** :
+2. **Créez/modifiez l'utilisateur admin (recommandé)** :
+   ```bash
+   npm run create-admin-direct
+   ```
+   Cette commande crée ou met à jour l'admin directement dans la base de données.
+
+3. **Alternative : Via l'application** :
    ```bash
    npm run create-admin
    ```
 
-3. **Informations de connexion par défaut** :
+4. **Informations de connexion par défaut** :
    - Email : `admin@streamkji.com`
    - Mot de passe : `admin123`
-   - ⚠️ Changez ce mot de passe après la première connexion !
+   - ⚠️ **IMPORTANT** : Changez ce mot de passe après la première connexion !
 
 ### Erreurs 500 sur les API
 
