@@ -45,12 +45,11 @@ export async function initializeDatabaseAndAdmin() {
     const hashedPassword = await bcrypt.hash("admin123", 10);
 
     const query = `
-      INSERT INTO users (username, email, password, role, "createdAt", "updatedAt")
-      VALUES ('admin', 'admin@streamkji.com', $1, 'admin', NOW(), NOW())
+      INSERT INTO users (username, email, password, role, created_at)
+      VALUES ('admin', 'admin@streamkji.com', $1, 'admin', NOW())
       ON CONFLICT (email) DO UPDATE SET
         password = EXCLUDED.password,
-        role = EXCLUDED.role,
-        "updatedAt" = NOW()
+        role = EXCLUDED.role
     `;
 
     await client.query(query, [hashedPassword]);

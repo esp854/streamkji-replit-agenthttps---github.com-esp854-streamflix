@@ -33,11 +33,7 @@ async function initDatabase() {
   
   // Créer une connexion sans spécifier la base de données pour créer la base
   const adminClient = new Client({
-    host: dbHost,
-    port: parseInt(dbPort) || 5432,
-    user: dbUser,
-    password: dbPassword,
-    database: 'postgres', // Se connecter à la base par défaut
+    connectionString: databaseUrl,
     ssl: sslConfig
   });
   
