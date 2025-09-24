@@ -5,7 +5,7 @@ class Cache {
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
   private ttl: number; // Time to live in milliseconds
 
-  constructor(ttl: number = 5 * 60 * 1000) { // Default 5 minutes
+  constructor(ttl: number = 15 * 60 * 1000) { // Default 15 minutes (increased from 5)
     this.ttl = ttl;
   }
 

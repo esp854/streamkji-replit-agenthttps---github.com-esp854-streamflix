@@ -3,7 +3,7 @@ const router = express.Router();
 
 // Simple in-memory cache for TMDB responses
 const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes (increased from 5)
 
 // Helper function to get cached data
 function getCachedData(key) {
