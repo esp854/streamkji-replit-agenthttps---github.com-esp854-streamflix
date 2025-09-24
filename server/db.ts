@@ -7,13 +7,17 @@ import * as schema from "@shared/schema";
 config();
 
 // Use the DATABASE_URL from environment variables
-const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:1234@localhost:5432/streamkji?sslmode=disable';
+const databaseUrl = process.env.DATABASE_URL;
 
-// Configure SSL based on environment
-const isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
-const sslConfig = isRender ? {
+// If no DATABASE_URL is provided, throw an error instead of defaulting to localhost
+if (!databaseUrl) {
+  throw new Error("❌ DATABASE_URL environment variable is not set");
+}
+
+// Configure SSL for Render deployment
+const sslConfig = {
   rejectUnauthorized: false // nécessaire sur Render
-} : false;
+};
 
 export const pool = new Pool({ 
   connectionString: databaseUrl,
