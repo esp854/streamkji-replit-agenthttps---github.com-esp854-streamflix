@@ -3,13 +3,28 @@ import { Client } from 'pg';
 async function checkPostgres() {
   console.log("🔍 Vérification de PostgreSQL...");
   
-  const client = new Client({
-    host: 'localhost',
-    port: 5432,
-    user: 'postgres',
-    password: '1234',
-    database: 'postgres',
-  });
+  // Only check localhost if no DATABASE_URL is set
+  const databaseUrl = process.env.DATABASE_URL;
+  let client;
+  
+  if (databaseUrl) {
+    // Use the DATABASE_URL from environment variables
+    client = new Client({
+      connectionString: databaseUrl,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+  } else {
+    // Fallback to localhost for local development
+    client = new Client({
+      host: 'localhost',
+      port: 5432,
+      user: 'postgres',
+      password: '1234',
+      database: 'postgres',
+    });
+  }
   
   try {
     await client.connect();
