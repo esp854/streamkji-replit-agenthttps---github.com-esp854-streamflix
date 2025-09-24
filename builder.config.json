@@ -1,6 +1,6 @@
 {
   "command": "npm run dev",
-  "serverUrl": "http://127.0.0.1:5000/",
+  "serverUrl": "https://your-app-url.onrender.com/",
   "authenticateProxy": false,
   "commitMode": "commits"
 }

@@ -3,28 +3,20 @@ import { Client } from 'pg';
 async function checkPostgres() {
   console.log("🔍 Vérification de PostgreSQL...");
   
-  // Only check localhost if no DATABASE_URL is set
   const databaseUrl = process.env.DATABASE_URL;
-  let client;
   
-  if (databaseUrl) {
-    // Use the DATABASE_URL from environment variables
-    client = new Client({
-      connectionString: databaseUrl,
-      ssl: {
-        rejectUnauthorized: false
-      }
-    });
-  } else {
-    // Fallback to localhost for local development
-    client = new Client({
-      host: 'localhost',
-      port: 5432,
-      user: 'postgres',
-      password: '1234',
-      database: 'postgres',
-    });
+  if (!databaseUrl) {
+    console.log("❌ DATABASE_URL environment variable is not set");
+    console.log("   Please set the DATABASE_URL in your .env file");
+    return;
   }
+  
+  const client = new Client({
+    connectionString: databaseUrl,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
   
   try {
     await client.connect();
@@ -39,8 +31,8 @@ async function checkPostgres() {
     console.log("❌ PostgreSQL n'est pas accessible");
     
     if (error.code === 'ECONNREFUSED') {
-      console.log("💡 PostgreSQL n'est pas démarré");
-      console.log("   Veuillez démarrer le service PostgreSQL");
+      console.log("💡 Connexion refusée");
+      console.log("   Vérifiez que l'URL de la base de données est correcte");
     } else if (error.code === '28P01') {
       console.log("💡 Mot de passe incorrect");
       console.log("   Vérifiez le mot de passe dans votre configuration");

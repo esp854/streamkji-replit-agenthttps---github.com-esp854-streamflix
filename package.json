@@ -17,6 +17,7 @@
     "create-admin-direct": "tsx server/create-admin-direct.ts",
     "init-admin": "tsx server/init-admin.ts",
     "init-admin-simple": "tsx server/init-admin-simple.ts",
+    "init-db-and-admin": "tsx server/init-db-and-admin.ts",
     "test-db": "tsx server/test-db.ts",
     "test-connection": "tsx server/test-connection.ts",
     "init-db": "tsx server/init-db.ts",

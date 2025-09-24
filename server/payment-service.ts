@@ -43,7 +43,7 @@ export class PaymentService {
       baseUrl = baseUrl.slice(0, -3);
     }
     this.lygosApiBaseUrl = baseUrl;
-    this.clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    this.clientUrl = process.env.CLIENT_URL || 'https://your-app-url.onrender.com';
   }
 
   // Check if the payment service is properly configured
@@ -80,7 +80,7 @@ export class PaymentService {
       }
 
       // Log the request data for debugging
-      const webhookBase = process.env.BASE_URL || process.env.APP_URL || 'http://localhost:5000';
+      const webhookBase = process.env.BASE_URL || process.env.APP_URL || 'https://your-app-url.onrender.com';
       const requestData = {
         amount: selectedPlan.amount,
         shop_name: `StreamFlix - Plan ${selectedPlan.name}`,

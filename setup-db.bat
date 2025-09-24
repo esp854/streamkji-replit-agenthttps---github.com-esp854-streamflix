@@ -7,22 +7,26 @@ echo.
 
 echo Vérifiez que PostgreSQL est installé et en cours d'exécution.
 echo Détails d'installation par défaut :
-echo - Hôte : localhost
-echo - Port : 5432
-echo - Utilisateur : postgres
+echo - Hôte : votre_hôte_postgresql
+echo - Port : votre_port_postgresql
+echo - Utilisateur : votre_utilisateur
 echo.
 
+set /p DB_HOST="Entrez votre hôte PostgreSQL (ex: localhost, render.com, etc.) : "
+set /p DB_PORT="Entrez votre port PostgreSQL (ex: 5432) : "
+set /p DB_USER="Entrez votre utilisateur PostgreSQL : "
 set /p DB_PASSWORD="Entrez votre mot de passe PostgreSQL : "
+set /p DB_NAME="Entrez le nom de votre base de données : "
 
 echo.
 echo Création de la base de données...
-psql -U postgres -h localhost -p 5432 -c "CREATE DATABASE streamkji;"
+psql -U %DB_USER% -h %DB_HOST% -p %DB_PORT% -c "CREATE DATABASE %DB_NAME%;"
 
 if %ERRORLEVEL% EQU 0 (
-    echo ✅ Base de données 'streamkji' créée avec succès !
+    echo ✅ Base de données '%DB_NAME%' créée avec succès !
     echo.
     echo Mise à jour du fichier .env...
-    powershell -Command "(Get-Content '.env') -replace 'DATABASE_URL=postgresql://postgres:.*@localhost:5432/streamkji', 'DATABASE_URL=postgresql://postgres:%DB_PASSWORD%@localhost:5432/streamkji' | Set-Content '.env'"
+    powershell -Command "(Get-Content '.env') -replace 'DATABASE_URL=.*', 'DATABASE_URL=postgresql://%DB_USER%:%DB_PASSWORD%@%DB_HOST%:%DB_PORT%/%DB_NAME%' | Set-Content '.env'"
     echo.
     echo ✅ Fichier .env mis à jour !
     echo.
