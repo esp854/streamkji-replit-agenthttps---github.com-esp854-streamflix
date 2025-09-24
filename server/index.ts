@@ -3,7 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { apiLimiter, securityHeaders, corsOptions, validateInput, xssProtection } from "./security";
-import { initAdminOnStartup } from "./init-admin";
+import { initializeAdminSimple as initAdminOnStartup } from "./init-admin-simple";
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 

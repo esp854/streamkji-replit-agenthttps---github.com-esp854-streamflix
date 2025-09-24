@@ -14,11 +14,16 @@ export async function initializeAdmin() {
   console.log("🔧 Initialisation de l'utilisateur admin...");
 
   const databaseUrl = process.env.DATABASE_URL;
+  console.log("📍 DATABASE_URL définie:", !!databaseUrl);
 
   if (!databaseUrl) {
     console.warn("⚠️ DATABASE_URL non définie - skipping admin initialization");
     return;
   }
+
+  // Log partiel de l'URL pour débogage (sans les credentials)
+  const url = new URL(databaseUrl);
+  console.log(`🔗 Connexion à: ${url.hostname}:${url.port}/${url.pathname.substring(1)}`);
 
   const client = new Client({
     connectionString: databaseUrl,
@@ -97,7 +102,18 @@ export async function initializeAdmin() {
     console.log("🎯 Initialisation admin terminée");
 
   } catch (error: any) {
-    console.error("❌ Erreur lors de l'initialisation admin:", error.message);
+    console.error("❌ Erreur lors de l'initialisation admin:");
+    console.error("   Message:", error.message);
+    console.error("   Code:", error.code);
+    console.error("   Détails:", error);
+
+    // Log supplémentaire pour le débogage
+    if (error.message?.includes('connect')) {
+      console.log("💡 Problème de connexion à la base de données");
+    } else if (error.message?.includes('relation') || error.message?.includes('table')) {
+      console.log("💡 Table 'users' probablement inexistante - exécutez d'abord: npm run db:push");
+    }
+
     // Ne pas throw l'erreur pour ne pas bloquer le démarrage de l'app
   }
 }
