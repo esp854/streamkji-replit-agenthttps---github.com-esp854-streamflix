@@ -26,6 +26,8 @@ import PaymentSuccess from "@/pages/payment-success";
 import PlanDemo from "@/pages/plan-demo";
 import NotFound from "@/pages/not-found";
 import Series from "@/pages/series";
+import Login from "@/pages/login";
+import Register from "@/pages/register";
 import ZuploadTest from "@/pages/zupload-test";
 import ZuploadEpisodeTest from "@/pages/zupload-episode-test";
 import ZuploadDirectTest from "@/pages/zupload-direct-test";
@@ -74,10 +76,11 @@ function Router() {
       {/* Watch routes - full screen without navbar/footer */}
       <Route path="/watch/movie/:id" component={WatchMovie} />
       <Route path="/watch/tv/:id/:season?/:episode?" component={WatchTV} />
-      
-      {/* Authentication route */}
-      <Route path="/login" component={LoginRoute} />
-      
+
+      {/* Authentication routes - full screen without navbar/footer */}
+      <Route path="/login" component={Login} />
+      <Route path="/register" component={Register} />
+
       {/* Admin route */}
       <Route path="/admin" component={AdminDashboard} />
       
@@ -112,6 +115,7 @@ function App() {
   const [location] = useLocation();
   const isWatchPage = location.startsWith("/watch/");
   const isAdminPage = location === "/admin";
+  const isAuthPage = location === "/login" || location === "/register";
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -119,11 +123,11 @@ function App() {
         <TooltipProvider>
           <ErrorBoundary>
             <div className="flex flex-col min-h-screen">
-              {!isWatchPage && !isAdminPage && <Navbar />}
-              <main className={`flex-grow ${!isWatchPage && !isAdminPage ? 'pt-16 md:pb-0 pb-16' : ''}`}>
+              {!isWatchPage && !isAdminPage && !isAuthPage && <Navbar />}
+              <main className={`flex-grow ${!isWatchPage && !isAdminPage && !isAuthPage ? 'pt-16 md:pb-0 pb-16' : ''}`}>
                 <Router />
               </main>
-              {!isWatchPage && !isAdminPage && <Footer />}
+              {!isWatchPage && !isAdminPage && !isAuthPage && <Footer />}
             </div>
           </ErrorBoundary>
           <Toaster />
