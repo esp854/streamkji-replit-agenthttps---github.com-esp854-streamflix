@@ -15,6 +15,12 @@ async function initDatabase() {
     process.exit(1);
   }
   
+  // Configure SSL based on environment
+  const isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
+  const sslConfig = isRender ? {
+    rejectUnauthorized: false // nécessaire sur Render
+  } : false;
+  
   // Extraire les composants de l'URL
   const url = new URL(databaseUrl);
   const dbName = url.pathname.substring(1);
@@ -32,6 +38,7 @@ async function initDatabase() {
     user: dbUser,
     password: dbPassword,
     database: 'postgres', // Se connecter à la base par défaut
+    ssl: sslConfig
   });
   
   try {
@@ -57,6 +64,7 @@ async function initDatabase() {
     // Maintenant se connecter à la base de données spécifique
     const dbClient = new Client({
       connectionString: databaseUrl,
+      ssl: sslConfig
     });
     
     await dbClient.connect();

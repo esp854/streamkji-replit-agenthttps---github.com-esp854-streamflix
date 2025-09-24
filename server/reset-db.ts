@@ -13,8 +13,15 @@ async function resetDatabase() {
 
   console.log("🗑️  Réinitialisation de la base de données StreamKJI...");
   
+  // Configure SSL based on environment
+  const isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
+  const sslConfig = isRender ? {
+    rejectUnauthorized: false // nécessaire sur Render
+  } : false;
+  
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
+    ssl: sslConfig
   });
 
   try {

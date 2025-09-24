@@ -14,8 +14,15 @@ async function addBannerFields() {
     process.exit(1);
   }
   
+  // Configure SSL based on environment
+  const isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
+  const sslConfig = isRender ? {
+    rejectUnauthorized: false // nécessaire sur Render
+  } : false;
+  
   const client = new Client({
     connectionString: databaseUrl,
+    ssl: sslConfig
   });
   
   try {

@@ -33,7 +33,7 @@ async function testConnection() {
     console.log('✅ Database connection successful!');
     console.log('🕐 Database time:', result.rows[0].now);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Database connection failed:', error.message);
     return false;
   } finally {

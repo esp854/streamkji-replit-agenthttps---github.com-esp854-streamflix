@@ -9,8 +9,14 @@ config();
 // Use the DATABASE_URL from environment variables
 const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:1234@localhost:5432/streamkji?sslmode=disable';
 
+// Configure SSL based on environment
+const isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
+const sslConfig = isRender ? {
+  rejectUnauthorized: false // nécessaire sur Render
+} : false;
+
 export const pool = new Pool({ 
   connectionString: databaseUrl,
-  ssl: false
+  ssl: sslConfig
 });
 export const db = drizzle(pool, { schema });
