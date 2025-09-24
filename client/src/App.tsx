@@ -120,7 +120,7 @@ function App() {
           <ErrorBoundary>
             <div className="flex flex-col min-h-screen">
               {!isWatchPage && !isAdminPage && <Navbar />}
-              <main className={`flex-grow ${!isWatchPage && !isAdminPage ? 'pt-16' : ''}`}>
+              <main className={`flex-grow ${!isWatchPage && !isAdminPage ? 'pt-16 md:pb-0 pb-16' : ''}`}>
                 <Router />
               </main>
               {!isWatchPage && !isAdminPage && <Footer />}

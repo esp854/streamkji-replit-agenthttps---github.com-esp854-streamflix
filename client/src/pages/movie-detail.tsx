@@ -95,7 +95,7 @@ export default function MovieDetail() {
   return (
     <div className="min-h-screen bg-background" data-testid="movie-detail-page">
       {/* Hero Section */}
-      <div className="relative h-screen">
+      <div className="relative h-[60vh] sm:h-[70vh] md:h-screen">
         <img
           src={tmdbService.getBackdropUrl(movie.backdrop_path)}
           alt={movie.title}
@@ -104,82 +104,93 @@ export default function MovieDetail() {
         />
         <div className="absolute inset-0 bg-black/50"></div>
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
-        
+
         {/* Back button */}
         <Link href="/">
           <Button
             variant="ghost"
             size="icon"
-            className="absolute top-8 left-8 bg-black/50 hover:bg-black/70 text-white w-12 h-12 rounded-full z-10"
+            className="absolute top-4 left-4 sm:top-8 sm:left-8 bg-black/50 hover:bg-black/70 text-white w-10 h-10 sm:w-12 sm:h-12 rounded-full z-10"
             data-testid="back-button"
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </Button>
         </Link>
-        
+
         {/* Movie info */}
-        <div className="absolute bottom-16 left-8 md:left-16 max-w-3xl z-10">
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4" data-testid="movie-title">
+        <div className="absolute bottom-8 left-4 right-4 sm:left-8 sm:right-8 md:left-16 md:bottom-16 max-w-3xl z-10">
+          <h1 className="text-2xl sm:text-4xl md:text-6xl font-bold text-white mb-3 sm:mb-4" data-testid="movie-title">
             {movie.title}
           </h1>
-          
-          <div className="flex items-center space-x-6 text-white/80 mb-6" data-testid="movie-metadata">
+
+          <div className="flex flex-wrap items-center gap-3 sm:gap-6 text-white/80 mb-4 sm:mb-6 text-sm sm:text-base" data-testid="movie-metadata">
             <span className="flex items-center space-x-1">
-              <Calendar className="w-5 h-5" />
+              <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
               <span>{new Date(movie.release_date).getFullYear()}</span>
             </span>
             {movie.runtime && (
               <span className="flex items-center space-x-1">
-                <Clock className="w-5 h-5" />
+                <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span>{formatRuntime(movie.runtime)}</span>
               </span>
             )}
-            <span>{movie.genres?.map(g => g.name).join(", ")}</span>
+            <span className="hidden md:inline">{movie.genres?.map(g => g.name).join(", ")}</span>
             <div className="flex items-center space-x-1">
-              <Star className="w-5 h-5 text-accent fill-current" />
+              <Star className="w-4 h-4 sm:w-5 sm:h-5 text-accent fill-current" />
               <span>{movie.vote_average.toFixed(1)}</span>
             </div>
           </div>
-          
-          <p className="text-lg md:text-xl text-white/90 mb-8 leading-relaxed max-w-2xl" data-testid="movie-overview">
+
+          {/* Mobile-only genres */}
+          <div className="md:hidden mb-4">
+            <span className="text-white/80 text-sm">{movie.genres?.map(g => g.name).join(", ")}</span>
+          </div>
+
+          <p className="text-white/90 text-sm sm:text-base md:text-lg mb-6 sm:mb-8 leading-relaxed max-w-2xl line-clamp-3 sm:line-clamp-none" data-testid="movie-overview">
             {movie.overview}
           </p>
-          
-          <div className="flex flex-wrap gap-4" data-testid="movie-actions">
-            <Link href={`/watch/movie/${movieId}`}>
-              <Button className="btn-primary flex items-center space-x-2" data-testid="watch-button">
-                <Play className="w-5 h-5" />
+
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4" data-testid="movie-actions">
+            <Link href={`/watch/movie/${movieId}`} className="w-full sm:w-auto">
+              <Button className="btn-primary flex items-center justify-center space-x-2 w-full sm:w-auto" data-testid="watch-button">
+                <Play className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span>Regarder</span>
               </Button>
             </Link>
-            <Button className="btn-secondary flex items-center space-x-2" onClick={handleAddToList} data-testid="add-list-button">
-              <Plus className="w-5 h-5" />
-              <span>Ma Liste</span>
-            </Button>
-            <Button 
-              className={`btn-secondary flex items-center space-x-2 ${isFavorite ? 'bg-primary text-white' : ''}`}
-              onClick={handleToggleFavorite}
-              disabled={isAddingToFavorites}
-              data-testid="favorite-button"
-            >
-              <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
-              <span>{isFavorite ? 'Retirer des favoris' : 'Favoris'}</span>
-            </Button>
-            <Button className="btn-secondary flex items-center space-x-2" onClick={handleShare} data-testid="share-button">
-              <Share2 className="w-5 h-5" />
-              <span>Partager</span>
-            </Button>
+
+            <div className="flex flex-wrap gap-2 sm:gap-4">
+              <Button className="btn-secondary flex items-center space-x-2 flex-1 sm:flex-none" onClick={handleAddToList} data-testid="add-list-button">
+                <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Ma Liste</span>
+                <span className="sm:hidden">Liste</span>
+              </Button>
+              <Button
+                className={`btn-secondary flex items-center space-x-2 flex-1 sm:flex-none ${isFavorite ? 'bg-primary text-white' : ''}`}
+                onClick={handleToggleFavorite}
+                disabled={isAddingToFavorites}
+                data-testid="favorite-button"
+              >
+                <Heart className={`w-4 h-4 sm:w-5 sm:h-5 ${isFavorite ? 'fill-current' : ''}`} />
+                <span className="hidden sm:inline">{isFavorite ? 'Retirer des favoris' : 'Favoris'}</span>
+                <span className="sm:hidden">Favoris</span>
+              </Button>
+              <Button className="btn-secondary flex items-center space-x-2 flex-1 sm:flex-none" onClick={handleShare} data-testid="share-button">
+                <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Partager</span>
+                <span className="sm:hidden">Share</span>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
       
       {/* Content sections */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-12">
         {/* Cast */}
         {cast.length > 0 && (
           <section data-testid="cast-section">
-            <h2 className="text-2xl md:text-3xl font-bold mb-8 text-foreground">Distribution</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-6" data-testid="cast-grid">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-8 text-foreground">Distribution</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 sm:gap-6" data-testid="cast-grid">
               {cast.map((actor) => (
                 <div key={actor.id} className="text-center" data-testid={`cast-member-${actor.id}`}>
                   <img
@@ -190,7 +201,7 @@ export default function MovieDetail() {
                       e.currentTarget.src = "/placeholder-profile.jpg";
                     }}
                   />
-                  <h3 className="text-sm font-medium text-foreground line-clamp-1">{actor.name}</h3>
+                  <h3 className="text-xs sm:text-sm font-medium text-foreground line-clamp-1">{actor.name}</h3>
                   <p className="text-xs text-muted-foreground line-clamp-1">{actor.character}</p>
                 </div>
               ))}
