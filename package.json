@@ -26,7 +26,8 @@
     "test-auth": "tsx server/test-auth.ts",
     "check-import-status": "tsx server/check-import-status.ts",
     "test-video-support": "tsx server/test-video-support.ts",
-    "fix-video-urls": "tsx server/fix-video-urls.ts"
+    "fix-video-urls": "tsx server/fix-video-urls.ts",
+    "post-deploy": "node scripts/post-deploy.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

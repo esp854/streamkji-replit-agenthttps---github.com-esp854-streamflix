@@ -668,6 +668,42 @@ router.get("/tmdb/tv/search", async (req, res) => {
   }
 });
 
+// TV season details
+router.get("/tmdb/tv/:id/season/:seasonNumber", async (req, res) => {
+  try {
+    const { id, seasonNumber } = req.params;
+    const apiKey = process.env.TMDB_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "TMDB API key not configured" });
+    }
+
+    const cacheKey = `tv-${id}-season-${seasonNumber}`;
+    const cached = getCachedData(cacheKey);
+    if (cached) {
+      console.log(`Returning cached TV season details for ${id} season ${seasonNumber}`);
+      return res.json(cached);
+    }
+
+    const response = await fetch(
+      `https://api.themoviedb.org/3/tv/${id}/season/${seasonNumber}?api_key=${apiKey}&language=fr-FR`
+    );
+    
+    if (!response.ok) {
+      console.error(`TMDB API error for TV season ${id}/${seasonNumber}: ${response.status} ${response.statusText}`);
+      throw new Error(`TMDB API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    // Cache the result
+    setCachedData(cacheKey, data);
+    res.json(data);
+  } catch (error) {
+    console.error("Error fetching TV season details:", error);
+    res.status(500).json({ error: "Failed to fetch TV season details" });
+  }
+});
+
 // Multi-search for both movies and TV shows
 router.get("/tmdb/multi-search", async (req, res) => {
   try {

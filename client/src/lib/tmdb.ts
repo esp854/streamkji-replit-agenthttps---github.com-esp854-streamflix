@@ -358,7 +358,7 @@ class TMDBService {
     }
   }
 
-  async getTVShowDetails(id: number): Promise<TVDetails> {
+  async getTVShowDetails(id: number): Promise<TVDetails | any> {
     const cacheKey = `tv-${id}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
@@ -372,7 +372,8 @@ class TMDBService {
       
       const response = await fetch(`${this.baseUrl}/tv/${id}`);
       if (!response.ok) {
-        throw new Error("Failed to fetch TV show details");
+        console.error(`Failed to fetch TV show details for ID ${id}:`, response.status, response.statusText);
+        throw new Error(`Failed to fetch TV show details: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
       
@@ -381,6 +382,46 @@ class TMDBService {
       return data;
     } catch (error) {
       console.error("Error fetching TV show details:", error);
+      throw error;
+    }
+  }
+
+  // Fetch details of a specific season including its episodes
+  async getTVSeasonDetails(tvId: number, seasonNumber: number): Promise<any> {
+    const cacheKey = `tv-${tvId}-season-${seasonNumber}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      await this.rateLimiter.wait();
+      const url = `${this.baseUrl}/tv/${tvId}/season/${seasonNumber}`;
+      console.log(`Fetching TV season details from: ${url}`);
+      const response = await fetch(url);
+      
+      // Log the response status and headers for debugging
+      console.log(`Response status: ${response.status}`);
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      console.log(`Response headers:`, headers);
+      
+      if (!response.ok) {
+        console.error(`Failed to fetch season details for TV ${tvId} S${seasonNumber}:`, response.status, response.statusText);
+        throw new Error(`Failed to fetch season details: ${response.status} ${response.statusText}`);
+      }
+      
+      const text = await response.text();
+      console.log(`Response text (first 500 chars):`, text.substring(0, 500));
+      
+      // Try to parse as JSON
+      const data = JSON.parse(text);
+      this.cache.set(cacheKey, data);
+      return data;
+    } catch (error) {
+      console.error("Error fetching TV season details:", error);
       throw error;
     }
   }

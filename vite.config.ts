@@ -13,16 +13,18 @@ const cspMiddleware = () => {
     name: 'csp-middleware',
     configureServer(server: ViteDevServer) {
       server.middlewares.use((req: any, res: any, next: any) => {
-        // Add CSP header to allow Zupload domains
+        // Add CSP header to allow Zupload domains and YouTube iframes
         res.setHeader(
           'Content-Security-Policy',
           `default-src 'self'; ` +
-          `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google-analytics.com; ` +
-          `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; ` +
-          `img-src 'self' data: https:; ` +
+          `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google-analytics.com https://www.gstatic.com https://www.google.com https://apis.google.com http://localhost:5173 http://127.0.0.1:5000 blob:; ` +
+          `script-src-elem 'self' 'unsafe-inline' https://www.google-analytics.com https://www.gstatic.com https://www.google.com https://apis.google.com http://localhost:5173 http://127.0.0.1:5000 blob:; ` +
+          `script-src-attr 'self' 'unsafe-inline'; ` +
+          `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.gstatic.com https://translate.googleapis.com; ` +
+          `img-src 'self' data: https: blob:; ` +
           `font-src 'self' data: https://fonts.gstatic.com; ` +
-          `connect-src 'self' https://api.themoviedb.org https://image.tmdb.org; ` +
-          `frame-src 'self' https://odysee.com https://player.twitch.tv https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://zupload.cc https://zupload.io; ` +
+          `connect-src 'self' https://api.themoviedb.org https://image.tmdb.org https://*.googleapis.com https://*.youtube.com; ` +
+          `frame-src 'self' https://odysee.com https://player.twitch.tv https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://zupload.cc https://zupload.io blob:; ` +
           `media-src 'self' blob: https:; ` +
           `worker-src 'self' blob:; ` +
           `child-src 'self' blob: https://zupload.cc https://zupload.io;`
@@ -72,7 +74,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false
       }

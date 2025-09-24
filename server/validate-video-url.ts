@@ -37,6 +37,8 @@ function validateVideoUrl(url: string): { isValid: boolean; error?: string } {
       'vimeo.com',
       'mux.com',
       'player.mux.com',
+      'zupload.cc',
+      'zupload.io',
       '.mp4',
       '.webm',
       '.ogg',
@@ -55,7 +57,7 @@ function validateVideoUrl(url: string): { isValid: boolean; error?: string } {
     
     if (!isSupported) {
       console.log('⚠️  Warning: URL is not from a recognized video platform');
-      console.log('   Supported platforms: Odysee, YouTube, Vimeo, Mux, and direct video files');
+      console.log('   Supported platforms: Odysee, YouTube, Vimeo, Mux, Zupload, and direct video files');
     }
     
     return { isValid: true };

@@ -1,21 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '@/contexts/auth-context';
+import VideoAdOverlay from '@/components/VideoAdOverlay';
+import AdService from '@/services/adService';
 
 interface ZuploadVideoPlayerProps {
   videoUrl: string;
   title: string;
   onVideoEnd?: () => void;
   onVideoError?: (error: string) => void;
+  adSlotId?: string;
+  youtubeAdVideoId?: string; // YouTube video ID for specific ad
 }
 
 const ZuploadVideoPlayer: React.FC<ZuploadVideoPlayerProps> = ({ 
   videoUrl, 
   title,
   onVideoEnd,
-  onVideoError
+  onVideoError,
+  adSlotId,
+  youtubeAdVideoId
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
+  const [showAd, setShowAd] = useState(false);
+  const [initialAdShown, setInitialAdShown] = useState(false);
 
   // Handle iframe load
   const handleIframeLoad = () => {
@@ -34,12 +44,22 @@ const ZuploadVideoPlayer: React.FC<ZuploadVideoPlayerProps> = ({
   useEffect(() => {
     setIsLoading(true);
     setError(null);
-  }, [videoUrl]);
+    
+    // Show ad to unauthenticated users
+    if (!isAuthenticated) {
+      setShowAd(true);
+      setInitialAdShown(true);
+    }
+  }, [videoUrl, isAuthenticated]);
 
   // Modified video URL to include branding removal parameters and disable download
   const modifiedVideoUrl = videoUrl.includes('?') 
     ? `${videoUrl}&branding=0&show_title=0&show_info=0&disable_download=1&no_download=1` 
     : `${videoUrl}?branding=0&show_title=0&show_info=0&disable_download=1&no_download=1`;
+
+  const handleCloseAd = () => {
+    setShowAd(false);
+  };
 
   return (
     <div className="relative w-full h-screen bg-black">
@@ -51,6 +71,15 @@ const ZuploadVideoPlayer: React.FC<ZuploadVideoPlayerProps> = ({
             <p className="text-white">Chargement de la vidéo...</p>
           </div>
         </div>
+      )}
+
+      {/* Ad overlay for unauthenticated users */}
+      {showAd && (
+        <VideoAdOverlay 
+          onClose={handleCloseAd} 
+          onSkip={handleCloseAd}
+          youtubeVideoId={youtubeAdVideoId}
+        />
       )}
 
       {/* Error display */}

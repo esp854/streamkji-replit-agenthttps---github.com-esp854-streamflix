@@ -26,7 +26,7 @@ app.use("/api", adminRoutes);
 app.use("/api", tmdbRoutes);
 app.use("/api", authRoutes);
 
-app.listen(5000, () => {
-  console.log("Serveur backend en écoute sur le port 5000");
+app.listen(3000, () => {
+  console.log("Serveur backend en écoute sur le port 3000");
   console.log(`TMDB API Key configured: ${!!process.env.TMDB_API_KEY}`);
 });

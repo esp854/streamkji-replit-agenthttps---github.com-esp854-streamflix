@@ -5,7 +5,6 @@ import MovieRow from "@/components/movie-row";
 import CategoryGrid from "@/components/category-grid";
 import TelegramBanner from "@/components/telegram-banner";
 import SubscriptionBanner from "@/components/subscription-banner";
-import PlanBasedContent from "@/components/PlanBasedContent";
 import AdvertisementBanner from "@/components/AdvertisementBanner";
 import { useAuthCheck } from "@/hooks/useAuthCheck";
 import { useEffect, useState } from "react";
@@ -93,12 +92,6 @@ export default function Home() {
       {/* Subscription Banner */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <SubscriptionBanner />
-      </div>
-      
-      {/* Plan-based Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
-        <h2 className="text-2xl font-bold mb-6">Contenu selon votre plan</h2>
-        <PlanBasedContent />
       </div>
       
       {/* Movie Sections */}

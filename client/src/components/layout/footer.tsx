@@ -2,12 +2,12 @@ import { Link } from "wouter";
 
 export default function Footer() {
   return (
-    <footer className="bg-card border-t border-border py-12 px-4 sm:px-6 lg:px-8 mt-16" data-testid="footer">
+    <footer className="bg-card border-t border-border py-8 sm:py-10 px-4 sm:px-6 lg:px-8 mt-16" data-testid="footer">
       <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
           {/* Company Info */}
-          <div>
-            <div className="text-2xl font-bold text-primary mb-4 flex items-center" data-testid="footer-logo">
+          <div className="text-center md:text-left">
+            <div className="text-2xl font-bold text-primary mb-4 flex items-center justify-center md:justify-start" data-testid="footer-logo">
               <svg className="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
               </svg>
@@ -16,12 +16,17 @@ export default function Footer() {
             <p className="text-muted-foreground" data-testid="footer-description">
               Votre plateforme de streaming préférée pour films et séries en haute qualité.
             </p>
+            <p className="mt-2">
+              <a href="mailto:streamflix234m@gmail.com" className="text-muted-foreground hover:text-foreground" data-testid="footer-email">
+                streamflix234m@gmail.com
+              </a>
+            </p>
           </div>
           
           {/* Navigation Links */}
-          <div>
+          <div className="text-center md:text-left">
             <h3 className="text-foreground font-semibold mb-4" data-testid="footer-navigation-title">Navigation</h3>
-            <ul className="space-y-2 text-muted-foreground">
+            <ul className="space-y-2 text-muted-foreground flex flex-col items-center md:items-start">
               <li>
                 <Link href="/" className="hover:text-foreground transition-colors duration-200" data-testid="footer-link-home">
                   Accueil
@@ -46,9 +51,9 @@ export default function Footer() {
           </div>
           
           {/* Support Links */}
-          <div>
+          <div className="text-center md:text-left">
             <h3 className="text-foreground font-semibold mb-4" data-testid="footer-support-title">Support</h3>
-            <ul className="space-y-2 text-muted-foreground">
+            <ul className="space-y-2 text-muted-foreground flex flex-col items-center md:items-start">
               <li>
                 <Link href="/help" className="hover:text-foreground transition-colors duration-200" data-testid="footer-link-help">
                   Centre d'aide
@@ -73,9 +78,9 @@ export default function Footer() {
           </div>
           
           {/* Social Media */}
-          <div>
+          <div className="text-center md:text-left">
             <h3 className="text-foreground font-semibold mb-4" data-testid="footer-social-title">Suivez-nous</h3>
-            <div className="flex space-x-4">
+            <div className="flex flex-wrap justify-center md:justify-start gap-4">
               <a href="#" className="text-muted-foreground hover:text-primary transition-colors duration-200" data-testid="social-link-facebook">
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
@@ -103,7 +108,7 @@ export default function Footer() {
         <hr className="border-border my-8" />
         
         <div className="text-center text-muted-foreground" data-testid="footer-copyright">
-          <p>&copy; 2024 StreamFlix. Tous droits réservés.</p>
+          <p>&copy; 2025 StreamFlix. Tous droits réservés.</p>
         </div>
       </div>
     </footer>

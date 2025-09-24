@@ -1,3 +1,5 @@
+import SubscriptionGuard from "@/components/SubscriptionGuard";
+
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { Home, Maximize, Minimize, Volume2, VolumeX, Play, Pause, Settings, SkipBack, SkipForward, RotateCcw, RotateCw, Download, Share2 } from "lucide-react";
@@ -10,6 +12,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import AdvertisementBanner from "@/components/AdvertisementBanner";
 import { useAuthCheck } from "@/hooks/useAuthCheck";
 import ZuploadVideoPlayer from "@/components/zupload-video-player";
+import InPlayerAdManager from "@/components/InPlayerAdManager";
+import { adConfig } from "@/config/adConfig";
 
 declare global {
   interface Window {
@@ -515,281 +519,294 @@ export default function WatchMovie() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white relative">
-      {/* Video container */}
-      <div className="relative w-full h-screen">
-        {/* Zupload Video Player - Direct integration */}
-        {isZuploadVideo && videoUrl ? (
-          <div className="w-full h-full">
-            <ZuploadVideoPlayer 
-              videoUrl={videoUrl}
-              title={movieDetails.movie.title}
-              onVideoError={handleVideoError}
-            />
-          </div>
-        ) : (
-          // Other video types (YouTube, Odysee, etc.) or fallback message
-          <>
-            {/* Video player has been removed for non-Zupload videos */}
-            <div className="w-full h-screen flex items-center justify-center bg-black">
-              <div className="text-center p-8">
-                <div className="text-4xl mb-4">🎬</div>
-                <h2 className="text-2xl font-bold mb-2">Lecteur de film non disponible</h2>
-                <p className="text-gray-400 mb-4">Cette vidéo n'est pas disponible pour le moment.</p>
-                <p className="text-gray-500 text-sm mb-6">Seules les vidéos Zupload sont actuellement supportées.</p>
-                <Button onClick={handleGoHome} variant="default">
-                  <Home className="w-4 h-4 mr-2" />
-                  Retour à l'accueil
-                </Button>
-              </div>
+    <SubscriptionGuard>
+      <div className="relative w-full h-screen bg-black overflow-hidden">
+        {/* Video container */}
+        <div className="relative w-full h-screen">
+          {/* Zupload Video Player - Direct integration */}
+          {isZuploadVideo && videoUrl ? (
+            <div className="w-full h-full">
+              <ZuploadVideoPlayer 
+                videoUrl={videoUrl}
+                title={movieDetails.movie.title}
+                onVideoError={handleVideoError}
+                adSlotId="movie-video-ad"
+                youtubeAdVideoId="dQw4w9WgXcQ" // Example YouTube video ID
+              />
             </div>
-          </>
-        )}
-        
-        {/* Buffering Indicator */}
-        {isBuffering && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div className="bg-black/80 text-white px-4 py-2 rounded-lg">
-              <div className="animate-spin w-6 h-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
-              <div className="text-sm">Chargement...</div>
-            </div>
-          </div>
-        )}
-
-        {/* Home Button - Fixed at top-left edge */}
-        <Button 
-          onClick={handleGoHome}
-          variant="ghost" 
-          size="sm" 
-          className="absolute top-2 left-2 z-50 bg-black/70 text-white hover:bg-black/90 transition-all duration-200 border border-white/20 backdrop-blur-sm"
-          title="Retour à l'accueil"
-        >
-          <Home className="w-4 h-4 mr-2" />
-          Accueil
-        </Button>
-
-        {/* Controls Overlay - only show for non-Odysee and non-Zupload videos */}
-        {!isOdyseeVideo && !isZuploadVideo && (
-          <div 
-            className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/60 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
-            onMouseMove={() => {
-              if (!isTransitioning) {
-                setShowControls(true);
-              }
-            }}
-          >
-            {/* Top Bar */}
-            <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                {/* Empty space where home button was */}
-              </div>
-              <div className="text-white text-xl font-semibold text-center flex-1">
-                {movieDetails.movie.title}
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={shareMovie}
-                  variant="ghost"
-                  size="sm"
-                  className="text-white hover:bg-white/20"
-                >
-                  <Share2 className="w-4 h-4" />
-                </Button>
-                {/* Removed download button for Zupload videos */}
-                {!isZuploadVideo && (
-                  <Button
-                    onClick={downloadMovie}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <Download className="w-4 h-4" />
+          ) : (
+            // Other video types (YouTube, Odysee, etc.) or fallback message
+            <>
+              {/* Video player has been removed for non-Zupload videos */}
+              <div className="w-full h-screen flex items-center justify-center bg-black">
+                <div className="text-center p-8">
+                  <div className="text-4xl mb-4">🎬</div>
+                  <h2 className="text-2xl font-bold mb-2">Lecteur de film non disponible</h2>
+                  <p className="text-gray-400 mb-4">Cette vidéo n'est pas disponible pour le moment.</p>
+                  <p className="text-gray-500 text-sm mb-6">Seules les vidéos Zupload sont actuellement supportées.</p>
+                  <Button onClick={handleGoHome} variant="default">
+                    <Home className="w-4 h-4 mr-2" />
+                    Retour à l'accueil
                   </Button>
-                )}
+                </div>
+              </div>
+            </>
+          )}
+          
+          {/* Buffering Indicator */}
+          {isBuffering && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+              <div className="bg-black/80 text-white px-4 py-2 rounded-lg">
+                <div className="animate-spin w-6 h-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
+                <div className="text-sm">Chargement...</div>
               </div>
             </div>
+          )}
 
-            {/* Center Controls */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex items-center space-x-8">
-                <Button
-                  onClick={rewind15}
-                  variant="ghost"
-                  size="lg"
-                  className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                >
-                  <RotateCcw className="w-6 h-6" />
-                </Button>
-                
-                <Button
-                  onClick={handlePlayPause}
-                  variant="ghost"
-                  size="lg"
-                  className="w-20 h-20 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                >
-                  {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
-                </Button>
-                
-                <Button
-                  onClick={forward15}
-                  variant="ghost"
-                  size="lg"
-                  className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                >
-                  <RotateCw className="w-6 h-6" />
-                </Button>
-              </div>
-            </div>
+          {/* Home Button - Fixed at top-left edge */}
+          <Button 
+            onClick={handleGoHome}
+            variant="ghost" 
+            size="sm" 
+            className="absolute top-2 left-2 z-50 bg-black/70 text-white hover:bg-black/90 transition-all duration-200 border border-white/20 backdrop-blur-sm"
+            title="Retour à l'accueil"
+          >
+            <Home className="w-4 h-4 mr-2" />
+            Accueil
+          </Button>
 
-            {/* Bottom Controls */}
-            <div className="absolute bottom-4 left-4 right-4 space-y-4">
-              {/* Progress Bar */}
-              <div className="flex items-center space-x-4">
-                <span className="text-white text-sm min-w-[60px]">
-                  {formatTime(currentTime)}
-                </span>
-                <Slider
-                  value={[currentTime]}
-                  onValueChange={handleSeek}
-                  max={duration}
-                  step={1}
-                  className="flex-1"
-                />
-                <span className="text-white text-sm min-w-[60px]">
-                  {formatTime(duration)}
-                </span>
-              </div>
-
-              {/* Control Buttons */}
-              <div className="flex items-center justify-between">
+          {/* Controls Overlay - only show for non-Odysee and non-Zupload videos */}
+          {!isOdyseeVideo && !isZuploadVideo && (
+            <div 
+              className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/60 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
+              onMouseMove={() => {
+                if (!isTransitioning) {
+                  setShowControls(true);
+                }
+              }}
+            >
+              {/* Top Bar */}
+              <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  {/* Empty space where home button was */}
+                </div>
+                <div className="text-white text-xl font-semibold text-center flex-1">
+                  {movieDetails.movie.title}
+                </div>
                 <div className="flex items-center space-x-2">
                   <Button
-                    onClick={handlePlayPause}
+                    onClick={shareMovie}
                     variant="ghost"
                     size="sm"
                     className="text-white hover:bg-white/20"
                   >
-                    {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                    <Share2 className="w-4 h-4" />
                   </Button>
-                  
-                  <Button
-                    onClick={skipBackward}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <SkipBack className="w-5 h-5" />
-                  </Button>
-                  
-                  <Button
-                    onClick={skipForward}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <SkipForward className="w-5 h-5" />
-                  </Button>
-
-                  <div className="flex items-center space-x-2 ml-4">
+                  {/* Removed download button for Zupload videos */}
+                  {!isZuploadVideo && (
                     <Button
-                      onClick={handleMute}
+                      onClick={downloadMovie}
                       variant="ghost"
                       size="sm"
                       className="text-white hover:bg-white/20"
                     >
-                      {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                      <Download className="w-4 h-4" />
                     </Button>
-                    <Slider
-                      value={volume}
-                      onValueChange={handleVolumeChange}
-                      max={100}
-                      step={1}
-                      className="w-24"
-                    />
-                  </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Center Controls */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex items-center space-x-8">
+                  <Button
+                    onClick={rewind15}
+                    variant="ghost"
+                    size="lg"
+                    className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  >
+                    <RotateCcw className="w-6 h-6" />
+                  </Button>
+                  
+                  <Button
+                    onClick={handlePlayPause}
+                    variant="ghost"
+                    size="lg"
+                    className="w-20 h-20 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  >
+                    {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
+                  </Button>
+                  
+                  <Button
+                    onClick={forward15}
+                    variant="ghost"
+                    size="lg"
+                    className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  >
+                    <RotateCw className="w-6 h-6" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Bottom Controls */}
+              <div className="absolute bottom-4 left-4 right-4 space-y-4">
+                {/* Progress Bar */}
+                <div className="flex items-center space-x-4">
+                  <span className="text-white text-sm min-w-[60px]">
+                    {formatTime(currentTime)}
+                  </span>
+                  <Slider
+                    value={[currentTime]}
+                    onValueChange={handleSeek}
+                    max={duration}
+                    step={1}
+                    className="flex-1"
+                  />
+                  <span className="text-white text-sm min-w-[60px]">
+                    {formatTime(duration)}
+                  </span>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
+                {/* Control Buttons */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      onClick={handlePlayPause}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                    </Button>
+                    
+                    <Button
+                      onClick={skipBackward}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      <SkipBack className="w-5 h-5" />
+                    </Button>
+                    
+                    <Button
+                      onClick={skipForward}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      <SkipForward className="w-5 h-5" />
+                    </Button>
+
+                    <div className="flex items-center space-x-2 ml-4">
                       <Button
+                        onClick={handleMute}
                         variant="ghost"
                         size="sm"
                         className="text-white hover:bg-white/20"
                       >
-                        <Settings className="w-5 h-5" />
+                        {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
                       </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-56 bg-black/90 border-white/20" side="top">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-white text-sm font-medium">Vitesse de lecture</label>
-                          <Select value={playbackSpeed.toString()} onValueChange={handlePlaybackSpeedChange}>
-                            <SelectTrigger className="w-full bg-black/50 text-white border-white/20">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="0.25">0.25x</SelectItem>
-                              <SelectItem value="0.5">0.5x</SelectItem>
-                              <SelectItem value="0.75">0.75x</SelectItem>
-                              <SelectItem value="1">Normal</SelectItem>
-                              <SelectItem value="1.25">1.25x</SelectItem>
-                              <SelectItem value="1.5">1.5x</SelectItem>
-                              <SelectItem value="1.75">1.75x</SelectItem>
-                              <SelectItem value="2">2x</SelectItem>
-                            </SelectContent>
-                          </Select>
+                      <Slider
+                        value={volume}
+                        onValueChange={handleVolumeChange}
+                        max={100}
+                        step={1}
+                        className="w-24"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-white hover:bg-white/20"
+                        >
+                          <Settings className="w-5 h-5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 bg-black/90 border-white/20" side="top">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-white text-sm font-medium">Vitesse de lecture</label>
+                            <Select value={playbackSpeed.toString()} onValueChange={handlePlaybackSpeedChange}>
+                              <SelectTrigger className="w-full bg-black/50 text-white border-white/20">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0.25">0.25x</SelectItem>
+                                <SelectItem value="0.5">0.5x</SelectItem>
+                                <SelectItem value="0.75">0.75x</SelectItem>
+                                <SelectItem value="1">Normal</SelectItem>
+                                <SelectItem value="1.25">1.25x</SelectItem>
+                                <SelectItem value="1.5">1.5x</SelectItem>
+                                <SelectItem value="1.75">1.75x</SelectItem>
+                                <SelectItem value="2">2x</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-white text-sm font-medium">Qualité</label>
+                            <Select value={quality} onValueChange={handleQualityChange}>
+                              <SelectTrigger className="w-full bg-black/50 text-white border-white/20">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="240p">240p</SelectItem>
+                                <SelectItem value="360p">360p</SelectItem>
+                                <SelectItem value="480p">480p</SelectItem>
+                                <SelectItem value="720p">720p HD</SelectItem>
+                                <SelectItem value="1080p">1080p Full HD</SelectItem>
+                                <SelectItem value="4k">4K Ultra HD</SelectItem>
+                                <SelectItem value="auto">Auto</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
-                        <div>
-                          <label className="text-white text-sm font-medium">Qualité</label>
-                          <Select value={quality} onValueChange={handleQualityChange}>
-                            <SelectTrigger className="w-full bg-black/50 text-white border-white/20">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="240p">240p</SelectItem>
-                              <SelectItem value="360p">360p</SelectItem>
-                              <SelectItem value="480p">480p</SelectItem>
-                              <SelectItem value="720p">720p HD</SelectItem>
-                              <SelectItem value="1080p">1080p Full HD</SelectItem>
-                              <SelectItem value="4k">4K Ultra HD</SelectItem>
-                              <SelectItem value="auto">Auto</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  
-                  <Button
-                    onClick={toggleFullscreen}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-white/20"
-                  >
-                    {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                  </Button>
+                      </PopoverContent>
+                    </Popover>
+                    
+                    <Button
+                      onClick={toggleFullscreen}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Keyboard Shortcuts Help - only show for non-Odysee and non-Zupload videos */}
-        {!isOdyseeVideo && !isZuploadVideo && (
-          <div className="absolute bottom-20 left-4 text-white text-xs opacity-50">
-            <p>Raccourcis: Espace/K (Play/Pause) • ← → (Navigation) • ↑ ↓ (Volume) • M (Muet) • F (Plein écran)</p>
-          </div>
-        )}
+          {/* Keyboard Shortcuts Help - only show for non-Odysee and non-Zupload videos */}
+          {!isOdyseeVideo && !isZuploadVideo && (
+            <div className="absolute bottom-20 left-4 text-white text-xs opacity-50">
+              <p>Raccourcis: Espace/K (Play/Pause) • ← → (Navigation) • ↑ ↓ (Volume) • M (Muet) • F (Plein écran)</p>
+            </div>
+          )}
 
-      </div>
-      
-      {/* Advertisement Banner */}
-      {shouldShowAds && (
-        <div className="py-4">
-          <AdvertisementBanner />
         </div>
-      )}
-    </div>
+        
+        {/* In-player ad manager - show ads only for unauthenticated users */}
+        {shouldShowAds && (
+          <InPlayerAdManager 
+            isAuthenticated={false} // Force to false since we're checking shouldShowAds
+            adInterval={adConfig.adInterval}
+            adDuration={adConfig.adDuration}
+            youtubeVideoIds={adConfig.youtubeAdVideoIds}
+            onAdStart={() => {
+              console.log("Movie page: Ad started");
+            }}
+            onAdEnd={() => {
+              console.log("Movie page: Ad ended");
+            }}
+          />
+        )}
+      </div>
+    </SubscriptionGuard>
   );
 }

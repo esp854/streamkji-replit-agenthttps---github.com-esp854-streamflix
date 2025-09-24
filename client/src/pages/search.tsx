@@ -29,17 +29,14 @@ export default function Search() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const { data: searchResults, isLoading } = useQuery({
-    queryKey: [`/api/tmdb/search`, debouncedQuery],
-    queryFn: () => tmdbService.searchMovies(debouncedQuery),
+  const { data: multiResults, isLoading } = useQuery({
+    queryKey: [`/api/tmdb/multi-search`, debouncedQuery],
+    queryFn: () => tmdbService.multiSearch(debouncedQuery),
     enabled: debouncedQuery.length > 0,
   });
 
-  const { data: tvSearchResults, isLoading: tvLoading } = useQuery({
-    queryKey: [`/api/tmdb/tv/search`, debouncedQuery],
-    queryFn: () => tmdbService.searchTVShows(debouncedQuery),
-    enabled: debouncedQuery.length > 0,
-  });
+  const moviesResults = (multiResults || []).filter((r: any) => r.media_type === 'movie');
+  const tvResults = (multiResults || []).filter((r: any) => r.media_type === 'tv');
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,30 +68,30 @@ export default function Search() {
         </div>
 
         {/* Search Results */}
-        {(isLoading || tvLoading) && debouncedQuery && (
+        {isLoading && debouncedQuery && (
           <div className="text-center py-12" data-testid="search-loading">
             <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-muted-foreground">Recherche en cours...</p>
           </div>
         )}
 
-        {!isLoading && !tvLoading && debouncedQuery && (searchResults || tvSearchResults) && (
+        {!isLoading && debouncedQuery && (moviesResults.length > 0 || tvResults.length > 0) && (
           <Tabs defaultValue="movies" className="w-full" data-testid="search-results">
             <TabsList className="grid w-full grid-cols-2 mb-6">
               <TabsTrigger value="movies" className="flex items-center space-x-2">
                 <Film className="h-4 w-4" />
-                <span>Films ({searchResults?.length || 0})</span>
+                <span>Films ({moviesResults.length})</span>
               </TabsTrigger>
               <TabsTrigger value="tv" className="flex items-center space-x-2">
                 <Tv className="h-4 w-4" />
-                <span>Séries ({tvSearchResults?.length || 0})</span>
+                <span>Séries ({tvResults.length})</span>
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="movies">
-              {searchResults && searchResults.length > 0 ? (
+              {moviesResults.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6" data-testid="search-results-grid">
-                  {searchResults.map((movie) => (
+                  {moviesResults.map((movie) => (
                     <MovieCard key={movie.id} movie={movie} size="small" />
                   ))}
                 </div>
@@ -110,9 +107,9 @@ export default function Search() {
             </TabsContent>
 
             <TabsContent value="tv">
-              {tvSearchResults && tvSearchResults.length > 0 ? (
+              {tvResults.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6" data-testid="search-tv-results-grid">
-                  {tvSearchResults.map((series) => (
+                  {tvResults.map((series) => (
                     <TVCard key={series.id} series={series} size="small" />
                   ))}
                 </div>

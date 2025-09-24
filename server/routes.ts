@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { plans } from "./plans";
+console.log('Plans imported:', plans); // Debug log
+
 import { paymentService, type CustomerInfo } from "./payment-service";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -30,9 +32,15 @@ import {
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import * as crypto from "crypto";
 import { authLimiter, bruteForceProtection, resetLoginAttempts, authenticateToken, csrfProtection, generateCSRFToken } from "./security";
 import { sendEmail } from "./mailer";
 import { securityLogger } from "./security-logger";
+// Import TMDB proxy routes from backend (JS router)
+// Using JS router directly to avoid duplicating logic
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - JS module without types
+import tmdbRoutes from "../backend/routes/tmdb.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-here-change-in-production";
 
@@ -82,6 +90,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Apply CSRF protection to all routes
   app.use(csrfProtection);
+
+  // Mount TMDB API proxy routes (so client can call /api/tmdb/* on this server)
+  // This prevents the Vite/SPA index.html fallback for unknown /api routes
+  app.use("/api", tmdbRoutes as any);
   
   // Email sending endpoint
   app.post("/api/send-email", async (req: any, res: any) => {
@@ -313,6 +325,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Déconnexion réussie" });
   });
 
+  // Health check endpoint for monitoring
+  app.get("/health", async (req: any, res: any) => {
+    try {
+      // Check database connection
+      await db.execute(sql`SELECT 1`);
+      
+      // Return health status
+      res.status(200).json({
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        database: "connected"
+      });
+    } catch (error) {
+      console.error("Health check failed:", error);
+      res.status(503).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   app.get("/api/auth/me", async (req: any, res: any) => {
     console.log('GET /api/auth/me - req.user:', req.user);
     
@@ -336,7 +372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Erreur lors de la récupération de l'utilisateur" });
     }
   });
-  
+
   // Get user favorites
   app.get("/api/favorites/:userId", async (req, res) => {
     try {
@@ -446,9 +482,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Security: E2EE public key endpoint (returns PEM-encoded RSA public key)
+  app.get("/api/security/public-key", async (_req: any, res: any) => {
+    try {
+      const publicKey = process.env.E2EE_PUBLIC_KEY;
+      if (!publicKey) {
+        return res.status(404).json({ error: "Public key not configured" });
+      }
+      res.json({ publicKey });
+    } catch (error) {
+      console.error("Error returning public key:", error);
+      res.status(500).json({ error: "Failed to get public key" });
+    }
+  });
+
   // Contact message
   app.post("/api/contact-messages", async (req, res) => {
     try {
+      // Optional E2EE decryption (RSA-OAEP-256) for contact message
+      const encryption = req.headers['x-encrypted'];
+      if (encryption === 'rsa-oaep-256') {
+        try {
+          const privKey = process.env.E2EE_PRIVATE_KEY;
+          if (!privKey) {
+            return res.status(500).json({ error: "Server missing E2EE private key" });
+          }
+          const encryptedBase64 = req.body?.message;
+          if (typeof encryptedBase64 === 'string' && encryptedBase64.length > 0) {
+            const decryptedBuffer = crypto.privateDecrypt(
+              {
+                key: privKey,
+                padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+                oaepHash: "sha256",
+              },
+              Buffer.from(encryptedBase64, "base64")
+            );
+            req.body.message = decryptedBuffer.toString("utf8");
+          }
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid encrypted payload" });
+        }
+      }
+
       const messageData = insertContactMessageSchema.parse(req.body);
       const message = await storage.createContactMessage(messageData);
       res.json(message);
@@ -1041,22 +1116,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update content (admin only)
-  app.put("/api/admin/content/:id", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const contentData = insertContentSchema.parse(req.body);
-      const content = await storage.updateContent(id, contentData);
-      res.json(content);
-    } catch (error) {
-      console.error("Error updating content:", error);
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ error: "Invalid content data", details: error.errors });
-      } else {
-        res.status(500).json({ error: "Failed to update content" });
-      }
-    }
-  });
+  // Deprecated: Strict update route removed to avoid conflicts with partial update handler below
+  // The flexible handler is defined later as: app.put("/api/admin/content/:contentId", ...)
 
   // Update notification (admin only)
   app.put("/api/admin/notifications/:id", requireAdmin, async (req, res) => {
@@ -1258,8 +1319,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get plans
-  app.get("/api/plans", async (req, res) => {
+
+
+  // Get subscription plans
+  app.get("/api/subscription/plans", async (req: any, res: any) => {
     try {
       res.json(plans);
     } catch (error) {
@@ -1268,74 +1331,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Subscribe to a plan
-  app.post("/api/subscribe", async (req, res) => {
+  // Create payment invoice for subscription
+  app.post("/api/subscription/create-payment", async (req: any, res: any) => {
     try {
-      const { planId, paymentToken } = req.body;
-      
       if (!req.user) {
         securityLogger.logUnauthorizedAccess(req.ip || 'unknown', req.path);
         return res.status(401).json({ error: "Non authentifié" });
       }
-      
-      const user = await storage.getUserById(req.user.userId);
-      if (!user) {
-        securityLogger.logUnauthorizedAccess(req.ip || 'unknown', req.path, req.user.userId);
-        return res.status(401).json({ error: "Non authentifié" });
+
+      const { planId, customerInfo } = req.body || {};
+      if (!planId) {
+        return res.status(400).json({ error: "Plan ID requis" });
       }
-      
+
       const plan = plans[planId as keyof typeof plans];
       if (!plan) {
         return res.status(400).json({ error: "Plan invalide" });
       }
-      
-      // Process payment
-      const customerInfo: CustomerInfo = {
-        email: user.email,
-        name: user.username
-      };
-      
-      const paymentResult = await paymentService.createLygosPayment(planId, customerInfo, user.id);
-      
-      // For free plans or successful payments, create the subscription
-      if (plan.amount === 0 || paymentResult.paymentLink) {
-        // Update user subscription
-        const subscriptionData = {
-          userId: user.id,
-          planId: planId,
-          amount: plan.amount,
-          paymentMethod: 'lygos',
-          startDate: new Date(),
-          endDate: new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000),
-          status: 'active'
-        };
-        const subscription = await storage.createSubscription(subscriptionData);
-        
-        // Save payment information for paid plans
-        if (plan.amount > 0 && paymentResult.paymentId) {
-          const paymentData = {
-            userId: user.id,
-            amount: plan.amount,
-            method: 'lygos',
-            subscriptionId: subscription.id,
-            transactionId: paymentResult.paymentId,
-            status: 'pending'
-          };
-          await storage.createPayment(paymentData);
-        }
-        
-        res.json({ 
-          success: true, 
-          message: "Abonnement réussi", 
-          subscription,
-          paymentLink: paymentResult.paymentLink
-        });
-      } else {
-        return res.status(400).json({ error: paymentResult.error || "Échec du paiement" });
+
+      const user = await storage.getUserById(req.user.userId);
+      if (!user) {
+        return res.status(401).json({ error: "Non authentifié" });
       }
-    } catch (error) {
-      console.error("Error subscribing to plan:", error);
-      res.status(500).json({ error: "Erreur lors de l'abonnement" });
+
+      const info: CustomerInfo = {
+        name: customerInfo?.name || user.username,
+        email: customerInfo?.email || user.email,
+        phone: customerInfo?.phone || "",
+      };
+
+      const result = await paymentService.createLygosPayment(planId, info, user.id);
+      // Retourner le résultat tel quel (paymentLink, approval_url, paymentId, qrCode, ...)
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Erreur lors de la création du paiement:", error);
+      return res.status(500).json({ error: error?.message || "Erreur lors de la création du paiement" });
+    }
+  });
+
+  // Check payment status
+  app.get("/api/subscription/check-payment/:paymentId", async (req: any, res: any) => {
+    try {
+      const { paymentId } = req.params;
+      if (!paymentId) {
+        return res.status(400).json({ error: "Payment ID requis" });
+      }
+
+      const status = await paymentService.checkLygosPaymentStatus(paymentId);
+      return res.json(status);
+    } catch (error: any) {
+      console.error("Erreur lors de la vérification du paiement:", error);
+      return res.status(500).json({ error: error?.message || "Erreur lors de la vérification du paiement" });
     }
   });
 
@@ -1759,6 +1805,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get public banners (no authentication required)
+  app.get("/api/banners", async (req, res) => {
+    try {
+      const banners = await storage.getBanners();
+      res.json(banners);
+    } catch (error) {
+      console.error("Error fetching banners:", error);
+      res.status(500).json({ error: "Failed to fetch banners" });
+    }
+  });
+
   // Update banner (admin only)
   app.put("/api/admin/banners/:id", requireAdmin, async (req, res) => {
     try {
@@ -1784,85 +1841,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching collections:", error);
       res.status(500).json({ error: "Failed to fetch collections" });
-    }
-  });
-
-  // Get content (admin only)
-  app.get("/api/admin/content", requireAdmin, async (req, res) => {
-    try {
-      const content = await storage.getContent();
-      res.json(content);
-    } catch (error) {
-      console.error("Error fetching content:", error);
-      res.status(500).json({ error: "Failed to fetch content" });
-    }
-  });
-
-  // Create content (admin only)
-  app.post("/api/admin/content", requireAdmin, async (req, res) => {
-    try {
-      const contentData = insertContentSchema.parse(req.body);
-      
-      // Check if content with this TMDB ID already exists
-      const existingContent = await storage.getContentByTmdbId(contentData.tmdbId);
-      if (existingContent) {
-        return res.status(400).json({ error: "Ce contenu existe déjà dans la plateforme" });
-      }
-      
-      const content = await storage.createContent(contentData);
-      res.json({ success: true, message: "Contenu ajouté", content });
-    } catch (error) {
-      console.error("Error creating content:", error);
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ error: "Invalid content data", details: error.errors });
-      } else {
-        res.status(500).json({ error: "Failed to create content" });
-      }
-    }
-  });
-
-  app.put("/api/admin/content/:contentId", requireAdmin, async (req: any, res: any) => {
-    try {
-      const { contentId } = req.params;
-      const contentData = insertContentSchema.partial().parse(req.body);
-      
-      // Decode HTML entities in the odyseeUrl if present
-      if (contentData.odyseeUrl) {
-        try {
-          // Simple HTML entity decoding
-          contentData.odyseeUrl = contentData.odyseeUrl
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#x2F;/g, '/')
-            .replace(/&#39;/g, "'");
-        } catch (e) {
-          // If we can't decode, just use the original URL
-          // The validation will catch any issues
-        }
-      }
-      
-      const content = await storage.updateContent(contentId, contentData);
-      res.json({ success: true, message: "Contenu mis à jour", content });
-    } catch (error) {
-      console.error("Error updating content:", error);
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ error: "Invalid content data", details: error.errors });
-      } else {
-        res.status(500).json({ error: "Failed to update content" });
-      }
-    }
-  });
-
-  app.delete("/api/admin/content/:contentId", requireAdmin, async (req: any, res: any) => {
-    try {
-      const { contentId } = req.params;
-      await storage.deleteContent(contentId);
-      res.json({ success: true, message: "Contenu supprimé" });
-    } catch (error) {
-      console.error("Error deleting content:", error);
-      res.status(500).json({ error: "Failed to delete content" });
     }
   });
 
@@ -1907,6 +1885,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'vimeo.com',
         'mux.com',
         'player.mux.com',
+        'zupload.cc',
+        'zupload.io',
         '.mp4',
         '.webm',
         '.ogg',
@@ -1926,7 +1906,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isSupported) {
         return res.status(400).json({ 
           error: "URL is not from a recognized video platform",
-          supported_platforms: "Odysee, YouTube, Vimeo, Mux, and direct video files"
+          supported_platforms: "Odysee, YouTube, Vimeo, Mux, Zupload, and direct video files"
         });
       }
       
@@ -1957,13 +1937,220 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all contents with video links (for admin panel)
-  app.get("/api/contents/tmdb", requireAdmin, async (req: any, res: any) => {
+  app.get("/api/admin/content", requireAdmin, async (req: any, res: any) => {
     try {
       const contents = await storage.getAllContent();
       res.json(contents);
     } catch (error) {
       console.error("Error fetching contents:", error);
       res.status(500).json({ error: "Failed to fetch contents" });
+    }
+  });
+
+  // Create new content (admin only)
+  app.post("/api/admin/content", requireAdmin, async (req: any, res: any) => {
+    try {
+      const contentData = insertContentSchema.parse(req.body);
+      
+      // Decode HTML entities in the odyseeUrl if present
+      if (contentData.odyseeUrl) {
+        try {
+          // Simple HTML entity decoding
+          contentData.odyseeUrl = contentData.odyseeUrl
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#x2F;/g, '/')
+            .replace(/&#39;/g, "'");
+        } catch (e) {
+          // If we can't decode, just use the original URL
+          // The validation will catch any issues
+        }
+      }
+      
+      const content = await storage.createContent(contentData);
+      res.status(201).json({ success: true, message: "Contenu créé", content });
+    } catch (error) {
+      console.error("Error creating content:", error);
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid content data", details: error.errors });
+      } else {
+        res.status(500).json({ error: "Failed to create content" });
+      }
+    }
+  });
+
+  // Update content by ID (admin only)
+  app.put("/api/admin/content/:contentId", requireAdmin, async (req: any, res: any) => {
+    try {
+      const { contentId } = req.params;
+      
+      // Get the existing content to validate against
+      const existingContent = await storage.getContentById(contentId);
+      if (!existingContent) {
+        return res.status(404).json({ error: "Content not found" });
+      }
+      
+      // Filter out undefined values and only keep fields that are actually being updated
+      const updateData: any = {};
+      for (const [key, value] of Object.entries(req.body)) {
+        if (value !== undefined && value !== null) {
+          updateData[key] = value;
+        }
+      }
+      
+      // Validate only the fields that are being updated
+      const validationErrors: string[] = [];
+      
+      // Validate specific fields if they are being updated
+      if (updateData.tmdbId !== undefined) {
+        const tmdbId = parseInt(updateData.tmdbId);
+        if (isNaN(tmdbId)) {
+          validationErrors.push("tmdbId must be a valid number");
+        } else {
+          updateData.tmdbId = tmdbId;
+        }
+      }
+      
+      if (updateData.title !== undefined && typeof updateData.title !== 'string') {
+        validationErrors.push("title must be a string");
+      }
+      
+      if (updateData.language !== undefined) {
+        const validLanguages = ['vf', 'vostfr', 'vo'];
+        if (!validLanguages.includes(updateData.language)) {
+          validationErrors.push(`language must be one of: ${validLanguages.join(', ')}`);
+        }
+      }
+      
+      if (updateData.quality !== undefined) {
+        const validQualities = ['sd', 'hd', '4k'];
+        if (!validQualities.includes(updateData.quality)) {
+          validationErrors.push(`quality must be one of: ${validQualities.join(', ')}`);
+        }
+      }
+      
+      if (updateData.mediaType !== undefined) {
+        const validMediaTypes = ['movie', 'tv'];
+        if (!validMediaTypes.includes(updateData.mediaType)) {
+          validationErrors.push(`mediaType must be one of: ${validMediaTypes.join(', ')}`);
+        }
+      }
+      
+      if (updateData.active !== undefined && typeof updateData.active !== 'boolean') {
+        validationErrors.push("active must be a boolean");
+      }
+      
+      if (updateData.rating !== undefined) {
+        const rating = parseInt(updateData.rating);
+        if (isNaN(rating) || rating < 0 || rating > 100) {
+          validationErrors.push("rating must be a number between 0 and 100");
+        } else {
+          updateData.rating = rating;
+        }
+      }
+      
+      // If there are validation errors, return them
+      if (validationErrors.length > 0) {
+        return res.status(400).json({ 
+          error: "Invalid content data", 
+          details: validationErrors,
+          message: "Les données fournies ne sont pas valides: " + validationErrors.join(", ")
+        });
+      }
+      
+      // Decode HTML entities in the odyseeUrl if present
+      if (updateData.odyseeUrl) {
+        try {
+          // Simple HTML entity decoding
+          updateData.odyseeUrl = updateData.odyseeUrl
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#x2F;/g, '/')
+            .replace(/&#39;/g, "'");
+        } catch (e) {
+          // If we can't decode, just use the original URL
+        }
+      }
+      
+      // Update the content
+      const content = await storage.updateContent(contentId, updateData);
+      res.json({ success: true, message: "Contenu mis à jour", content });
+    } catch (error) {
+      console.error("Error updating content:", error);
+      res.status(500).json({ 
+        error: "Failed to update content",
+        message: "Erreur lors de la mise à jour du contenu"
+      });
+    }
+  });
+
+  // Delete content by ID (admin only)
+  app.delete("/api/admin/content/:contentId", requireAdmin, async (req: any, res: any) => {
+    try {
+      const { contentId } = req.params;
+      await storage.deleteContent(contentId);
+      res.json({ success: true, message: "Contenu supprimé" });
+    } catch (error) {
+      console.error("Error deleting content:", error);
+      res.status(500).json({ error: "Failed to delete content" });
+    }
+  });
+
+  // Get content by TMDB ID (for frontend player)
+  app.get("/api/contents/tmdb/:tmdbId", async (req: any, res: any) => {
+    try {
+      const { tmdbId } = req.params;
+      
+      // Validate input
+      if (!tmdbId) {
+        return res.status(400).json({ error: "tmdbId is required" });
+      }
+      
+      const tmdbIdNum = parseInt(tmdbId);
+      if (isNaN(tmdbIdNum)) {
+        return res.status(400).json({ error: "Invalid tmdbId format" });
+      }
+      
+      // Get content by TMDB ID
+      const content = await storage.getContentByTmdbId(tmdbIdNum);
+      
+      if (!content) {
+        // Return a default content object with empty video URL instead of 404
+        return res.json({
+          id: `tmdb-${tmdbIdNum}`,
+          tmdbId: tmdbIdNum,
+          odyseeUrl: "",
+          active: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+      
+      // Only return content if it has a video URL
+      if (!content.odyseeUrl) {
+        // Return content with empty URL instead of 404
+        return res.json({
+          ...content,
+          odyseeUrl: ""
+        });
+      }
+      
+      res.json(content);
+    } catch (error) {
+      console.error("Error fetching content by TMDB ID:", error);
+      // Return a default content object with empty video URL instead of error
+      const { tmdbId } = req.params;
+      const tmdbIdNum = parseInt(tmdbId);
+      res.json({
+        id: `tmdb-${tmdbIdNum}`,
+        tmdbId: tmdbIdNum,
+        odyseeUrl: "",
+        active: false,
+        createdAt: new Date().toISOString()
+      });
     }
   });
 
@@ -2084,6 +2271,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting episode:", error);
       res.status(500).json({ error: "Erreur lors de la suppression de l'épisode" });
+    }
+  });
+
+  // Public endpoint: get episode by TMDB ID + season + episode
+  app.get("/api/episodes/tv/:tmdbId/:season/:episode", async (req: any, res: any) => {
+    try {
+      const tmdbIdNum = parseInt(req.params.tmdbId);
+      const seasonNum = parseInt(req.params.season);
+      const episodeNum = parseInt(req.params.episode);
+
+      if (isNaN(tmdbIdNum) || isNaN(seasonNum) || isNaN(episodeNum)) {
+        return res.status(400).json({ error: "Paramètres invalides" });
+      }
+
+      // Get content by TMDB (any status to allow inactive items still being setup)
+      const content = await storage.getContentByTmdbIdAnyStatus(tmdbIdNum) || await storage.getContentByTmdbId(tmdbIdNum);
+      if (!content) {
+        return res.status(404).json({ error: "Contenu non trouvé" });
+      }
+
+      const allEpisodes = await storage.getEpisodesByContentId(content.id);
+      const ep = allEpisodes.find((e: any) => Number(e.seasonNumber) === seasonNum && Number(e.episodeNumber) === episodeNum);
+
+      return res.json({ episode: ep || null });
+    } catch (error) {
+      console.error("Error fetching episode by TMDB/season/episode:", error);
+      res.status(500).json({ error: "Erreur lors de la récupération de l'épisode" });
     }
   });
 
@@ -3149,6 +3363,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use our payment service to create the payment
       const selectedPlan = plans[planId as keyof typeof plans];
       
+      // For free plans, no payment is needed
+      if (selectedPlan && selectedPlan.amount === 0) {
+        return res.json({ 
+          success: true, 
+          message: 'Abonnement gratuit activé avec succès' 
+        });
+      }
+      
       // For paid plans, use the payment service
       const userId = req.user?.userId || `temp_${customerInfo.email}_${Date.now()}`;
       console.log('Creating payment for:', { userId, planId, customerInfo });
@@ -3290,7 +3512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create new subscription with fixed dates
       const startDate = new Date();
       const endDate = new Date();
-      endDate.setDate(startDate.getDate() + selectedPlan.duration);
+      endDate.setDate(endDate.getDate() + selectedPlan.duration);
 
       const newSubscription = await storage.createSubscription({
         userId: userId,
@@ -3358,6 +3580,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch payment history" });
     }
   });
+
+  // Test route to check if routes are working
+  app.get("/api/test", async (req: any, res: any) => {
+    console.log('Test route called');
+    res.json({ message: "Test route working" });
+  });
   
   // Get subscription plans
   app.get("/api/subscription/plans", async (req: any, res: any) => {
@@ -3369,6 +3597,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  console.log('Subscription plans route registered'); // Debug log
+
   // Check payment status
   app.get("/api/subscription/check-payment/:paymentId", async (req: any, res: any) => {
     try {
@@ -4050,6 +4280,476 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error searching TV shows:", error);
       res.status(500).json({ error: "Failed to search TV shows" });
+    }
+  });
+  
+  // Check payment status
+  app.get("/api/subscription/check-payment/:paymentId", async (req: any, res: any) => {
+    try {
+      const { paymentId } = req.params;
+      
+      // Use our payment service to check the payment status
+      const paymentStatus = await paymentService.checkLygosPaymentStatus(paymentId);
+      res.json(paymentStatus);
+    } catch (error: any) {
+      console.error("Error checking payment status:", error);
+      
+      // Send a more user-friendly error message
+      const errorMessage = error.message || 'Erreur inconnue lors de la vérification du paiement';
+      const errorDetails = process.env.NODE_ENV === 'development' ? error.stack : undefined;
+      
+      res.status(500).json({ 
+        error: "Impossible de vérifier le statut du paiement", 
+        details: errorMessage,
+        ...(errorDetails ? { stack: errorDetails } : {})
+      });
+    }
+  });
+  
+  // Test payment service configuration
+  app.get("/api/test/payment-service", async (req: any, res: any) => {
+    try {
+      // Check if payment service is configured
+      const isLygosConfigured = paymentService.isConfigured();
+      
+      res.json({
+        status: 'Payment Service Configuration',
+        serviceInfo: {
+          currentService: 'lygos',
+          lygosAvailable: isLygosConfigured,
+          usingPaymentLink: isLygosConfigured
+        },
+        ready: isLygosConfigured
+      });
+    } catch (error) {
+      console.error('Payment service test error:', error);
+      res.status(500).json({ error: 'Configuration test failed' });
+    }
+  });
+
+  // Get CSRF token
+  app.get("/api/csrf-token", async (req: any, res: any) => {
+    try {
+      if (!req.user || !req.user.userId) {
+        return res.status(401).json({ error: "Non authentifié" });
+      }
+      
+      const userAgent = req.headers['user-agent'] || '';
+      const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+      const csrfToken = generateCSRFToken(req.user.userId, userAgent, ipAddress);
+      res.json({ csrfToken });
+    } catch (error) {
+      console.error("Error generating CSRF token:", error);
+      res.status(500).json({ error: "Erreur lors de la génération du jeton CSRF" });
+    }
+  });
+
+  // Get security logs (admin only)
+  app.get("/api/admin/security-logs", requireAdmin, (req, res) => {
+    try {
+      const logs = securityLogger.getRecentEvents(100);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching security logs:", error);
+      // Provide more detailed error information
+      res.status(500).json({ 
+        error: "Failed to fetch security logs",
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Test video link accessibility
+  app.post("/api/admin/test-video-link", requireAdmin, async (req: any, res: any) => {
+    try {
+      const { url } = req.body;
+      
+      if (!url) {
+        return res.status(400).json({ error: "URL is required" });
+      }
+      
+      // Validate URL format
+      try {
+        new URL(url);
+      } catch (urlError) {
+        return res.status(400).json({ error: "Invalid URL format" });
+      }
+      
+      // Test the URL accessibility
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      try {
+        const response = await fetch(url, { 
+          method: 'HEAD',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        res.json({
+          success: true,
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        
+        // Check if it's a CORS error
+        if (fetchError.name === 'AbortError') {
+          return res.status(408).json({ 
+            error: "Request timeout - the server took too long to respond",
+            possible_cause: "Network issue or server not responding"
+          });
+        }
+        
+        // Generic error
+        res.status(500).json({ 
+          error: "Failed to test video link",
+          details: fetchError.message,
+          possible_cause: "CORS restriction, network issue, or invalid URL"
+        });
+      }
+    } catch (error) {
+      console.error("Error testing video link:", error);
+      res.status(500).json({ error: "Failed to test video link" });
+    }
+  });
+
+  // Admin routes for episode management
+  app.post("/api/admin/episodes", requireAdmin, async (req: any, res: any) => {
+    try {
+      const { contentId, seasonNumber, episodeNumber, title, description, odyseeUrl, releaseDate } = req.body;
+      
+      // Validate required fields
+      if (!contentId || !seasonNumber || !episodeNumber || !title) {
+        return res.status(400).json({ error: "Les champs contentId, seasonNumber, episodeNumber et title sont requis" });
+      }
+      
+      // Check if content exists and is a TV series
+      const existingContent = await storage.getContentById(contentId);
+      if (!existingContent) {
+        return res.status(404).json({ error: "Contenu non trouvé" });
+      }
+      
+      if (existingContent.mediaType !== 'tv') {
+        return res.status(400).json({ error: "Le contenu doit être une série TV" });
+      }
+      
+      // Check if episode already exists
+      const existingEpisodes = await storage.getEpisodesByContentId(contentId);
+      const episodeExists = existingEpisodes.some(
+        ep => ep.seasonNumber === seasonNumber && ep.episodeNumber === episodeNumber
+      );
+      
+      if (episodeExists) {
+        return res.status(400).json({ error: "Cet épisode existe déjà pour cette saison" });
+      }
+      
+      // Create episode
+      const episodeData = {
+        contentId,
+        seasonNumber,
+        episodeNumber,
+        title,
+        description: description || '',
+        odyseeUrl: odyseeUrl || '',
+        releaseDate: releaseDate || '',
+        active: true
+      };
+      
+      const newEpisode = await storage.createEpisode(episodeData);
+      
+      res.status(201).json({ 
+        success: true, 
+        message: "Épisode créé avec succès",
+        episode: newEpisode
+      });
+    } catch (error) {
+      console.error("Error creating episode:", error);
+      res.status(500).json({ error: "Erreur lors de la création de l'épisode" });
+    }
+  });
+
+  app.get("/api/admin/episodes/:contentId", requireAdmin, async (req: any, res: any) => {
+    try {
+      const { contentId } = req.params;
+      
+      // Validate input
+      if (!contentId) {
+        return res.status(400).json({ error: "contentId est requis" });
+      }
+      
+      const episodes = await storage.getEpisodesByContentId(contentId);
+      res.json(episodes);
+    } catch (error) {
+      console.error("Error fetching episodes:", error);
+      res.status(500).json({ error: "Erreur lors de la récupération des épisodes" });
+    }
+  });
+
+  app.put("/api/admin/episodes/:episodeId", requireAdmin, async (req: any, res: any) => {
+    try {
+      const { episodeId } = req.params;
+      const updateData = req.body;
+      
+      // Validate input
+      if (!episodeId) {
+        return res.status(400).json({ error: "episodeId est requis" });
+      }
+      
+      const updatedEpisode = await storage.updateEpisode(episodeId, updateData);
+      res.json({ 
+        success: true, 
+        message: "Épisode mis à jour avec succès",
+        episode: updatedEpisode
+      });
+    } catch (error) {
+      console.error("Error updating episode:", error);
+      res.status(500).json({ error: "Erreur lors de la mise à jour de l'épisode" });
+    }
+  });
+
+  app.delete("/api/admin/episodes/:episodeId", requireAdmin, async (req: any, res: any) => {
+    try {
+      const { episodeId } = req.params;
+      
+      // Validate input
+      if (!episodeId) {
+        return res.status(400).json({ error: "episodeId est requis" });
+      }
+      
+      await storage.deleteEpisode(episodeId);
+      res.json({ success: true, message: "Épisode supprimé avec succès" });
+    } catch (error) {
+      console.error("Error deleting episode:", error);
+      res.status(500).json({ error: "Erreur lors de la suppression de l'épisode" });
+    }
+  });
+
+  // Subscription routes
+  // Get current user's subscription
+  app.get("/api/subscription/current", async (req: any, res: any) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Non authentifié" });
+      }
+
+      // Get user's current active subscription
+      const subscription = await storage.getUserSubscription(req.user.userId);
+      
+      if (!subscription) {
+        // Return free plan as default if no subscription exists
+        return res.json({
+          subscription: {
+            id: null,
+            userId: req.user.userId,
+            planId: "free",
+            amount: 0,
+            paymentMethod: "free",
+            status: "active",
+            startDate: new Date(),
+            endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+            createdAt: new Date()
+          }
+        });
+      }
+
+      res.json({ subscription });
+    } catch (error) {
+      console.error("Error fetching current subscription:", error);
+      res.status(500).json({ error: "Erreur lors de la récupération de l'abonnement" });
+    }
+  });
+
+  // Get user's payment history
+  app.get("/api/subscription/payment-history", async (req: any, res: any) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Non authentifié" });
+      }
+
+      // Get user's payment history
+      const payments = await storage.getUserPayments(req.user.userId);
+      
+      res.json({ payments });
+    } catch (error) {
+      console.error("Error fetching payment history:", error);
+      res.status(500).json({ error: "Erreur lors de la récupération de l'historique des paiements" });
+    }
+  });
+
+  // Create a new subscription/payment
+  app.post("/api/subscribe", async (req: any, res: any) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Non authentifié" });
+      }
+
+      const { planId, customerInfo } = req.body;
+
+      // Validate plan
+      if (!plans[planId as keyof typeof plans]) {
+        return res.status(400).json({ error: "Plan invalide" });
+      }
+
+      const selectedPlan = plans[planId as keyof typeof plans];
+
+      // For free plans, activate immediately
+      if (selectedPlan.amount === 0) {
+        // Calculate subscription dates
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + selectedPlan.duration);
+
+        // Create subscription in database
+        const subscription = await storage.createSubscription({
+          userId: req.user.userId,
+          planId: planId,
+          amount: selectedPlan.amount,
+          paymentMethod: "free",
+          status: "active",
+          startDate: startDate,
+          endDate: endDate
+        });
+
+        // Create payment record for tracking
+        await storage.createPayment({
+          userId: req.user.userId,
+          amount: selectedPlan.amount,
+          method: "free",
+          status: "success",
+          transactionId: `free_${Date.now()}`,
+          paymentData: { planId, customerInfo }
+        });
+
+        return res.json({
+          success: true,
+          message: "Abonnement gratuit activé avec succès",
+          subscription
+        });
+      }
+
+      // For paid plans, create payment with Lygos
+      const paymentResult = await paymentService.createLygosPayment(
+        planId,
+        customerInfo,
+        req.user.userId
+      );
+
+      if (paymentResult.success) {
+        // Store payment record in database
+        const paymentRecord = await storage.createPayment({
+          userId: req.user.userId,
+          amount: selectedPlan.amount,
+          method: "lygos",
+          status: "pending",
+          paymentData: paymentResult
+        });
+
+        return res.json({
+          ...paymentResult,
+          paymentId: paymentRecord.id
+        });
+      } else {
+        return res.status(400).json({
+          error: paymentResult.error || "Erreur lors de la création du paiement",
+          message: paymentResult.message
+        });
+      }
+    } catch (error: any) {
+      console.error("Error creating subscription:", error);
+      res.status(500).json({ 
+        error: "Erreur lors de la création de l'abonnement",
+        details: error.message
+      });
+    }
+  });
+
+  // Check payment status
+  app.get("/api/subscription/check-payment/:id", async (req: any, res: any) => {
+    try {
+      const { id: paymentId } = req.params;
+
+      if (!req.user) {
+        return res.status(401).json({ error: "Non authentifié" });
+      }
+
+      // Check payment status with Lygos
+      const paymentStatus = await paymentService.checkLygosPaymentStatus(paymentId);
+      
+      // Update payment record in database
+      await storage.updatePaymentStatus(paymentId, paymentStatus.status);
+      
+      // If payment is completed, activate subscription
+      if (paymentStatus.status === "completed") {
+        // Get payment record to get user and plan info
+        const paymentRecord = await storage.getPaymentById(paymentId);
+        if (paymentRecord) {
+          // Extract plan info from payment data
+          // This would need to be stored when creating the payment
+          // For now, we'll need to get this information another way
+          
+          // Create or update subscription
+          // This is a simplified implementation - in reality, you'd need to store
+          // the plan information with the payment
+        }
+      }
+
+      res.json(paymentStatus);
+    } catch (error: any) {
+      console.error("Error checking payment status:", error);
+      res.status(500).json({ 
+        error: "Erreur lors de la vérification du paiement",
+        details: error.message
+      });
+    }
+  });
+
+  // Webhook endpoint for Lygos payment notifications
+  app.post("/api/webhook/lygos", async (req: any, res: any) => {
+    try {
+      // Process webhook from Lygos
+      const result = await paymentService.processLygosWebhook(req.body);
+      
+      if (result.success) {
+        // Update payment and subscription status based on webhook data
+        const { id, status, custom_data } = req.body;
+        
+        // Update payment status in database
+        await storage.updatePaymentStatus(id, status);
+        
+        // If payment is completed, activate subscription
+        if (status === "completed" && custom_data) {
+          const { userId, planId } = custom_data;
+          const selectedPlan = plans[planId as keyof typeof plans];
+          
+          if (selectedPlan) {
+            // Calculate subscription dates
+            const startDate = new Date();
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + selectedPlan.duration);
+            
+            // Create subscription in database
+            const subscription = await storage.createSubscription({
+              userId: userId,
+              planId: planId,
+              amount: selectedPlan.amount,
+              paymentMethod: "lygos",
+              status: "active",
+              startDate: startDate,
+              endDate: endDate
+            });
+            
+            console.log("Subscription activated for user:", userId);
+          }
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error processing Lygos webhook:", error);
+      res.status(500).json({ error: "Erreur lors du traitement du webhook" });
     }
   });
   

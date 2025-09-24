@@ -34,7 +34,15 @@ export class PaymentService {
   constructor() {
     this.lygosApiKey = process.env.LYGOS_API_KEY || '';
     // Use the correct endpoint from environment variables
-    this.lygosApiBaseUrl = process.env.LYGOS_API_BASE_URL || 'https://api.lygosapp.com';
+    // Remove trailing slash and /v1 if present, as we'll add it in the requests
+    let baseUrl = process.env.LYGOS_API_BASE_URL || 'https://api.lygosapp.com';
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    if (baseUrl.endsWith('/v1')) {
+      baseUrl = baseUrl.slice(0, -3);
+    }
+    this.lygosApiBaseUrl = baseUrl;
     this.clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
   }
 
@@ -72,13 +80,14 @@ export class PaymentService {
       }
 
       // Log the request data for debugging
+      const webhookBase = process.env.BASE_URL || process.env.APP_URL || 'http://localhost:5000';
       const requestData = {
         amount: selectedPlan.amount,
-        shop_name: "StreamFlix",
+        shop_name: `StreamFlix - Plan ${selectedPlan.name}`,
+        order_id: `subscription_${userId}_${planId}_${Date.now()}`,
         message: description,
         success_url: `${this.clientUrl}/subscription?payment=success`,
-        failure_url: `${this.clientUrl}/subscription?payment=error`,
-        order_id: `ORDER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        failure_url: `${this.clientUrl}/subscription?payment=failed`,
         customer: {
           name: customerInfo.name,
           email: customerInfo.email,
@@ -89,7 +98,7 @@ export class PaymentService {
       console.log('Sending request to Lygos API:', {
         url: `${this.lygosApiBaseUrl}/v1/gateway`,
         headers: {
-          "api-key": this.lygosApiKey ? "[REDACTED]" : "MISSING",
+          "api-key": this.lygosApiKey,
           "Content-Type": "application/json"
         },
         body: requestData
@@ -123,12 +132,13 @@ export class PaymentService {
       const paymentData = await response.json();
       console.log('Lygos API success response:', paymentData);
       
-      // Based on the test response, we need to map the fields correctly
+      // Map common Lygos response fields
       return {
-        paymentLink: paymentData.link,  // Lygos returns 'link' field, not 'paymentLink'
-        paymentId: paymentData.id
-        // Note: Lygos doesn't seem to provide a QR code directly in this response
-        // We might need to generate it on the frontend or use a different endpoint
+        paymentLink: paymentData.link || paymentData.payment_url || paymentData.paymentLink,
+        approval_url: paymentData.approval_url,
+        paymentId: paymentData.id || paymentData.token || paymentData.paymentId,
+        qrCode: paymentData.qr_code_url || paymentData.qrCode,
+        success: true
       };
     } catch (error: any) {
       console.error("Error creating Lygos payment:", error);
@@ -149,7 +159,8 @@ export class PaymentService {
       // Check payment status with Lygos
       const response = await fetch(`${this.lygosApiBaseUrl}/v1/gateway/${paymentId}`, {
         headers: {
-          "api-key": this.lygosApiKey
+          "api-key": this.lygosApiKey,
+          "Content-Type": "application/json"
         }
       });
 

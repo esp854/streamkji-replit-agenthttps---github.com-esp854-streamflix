@@ -52,6 +52,49 @@ Pour que les utilisateurs reçoivent des emails de bienvenue lors de l'inscripti
 - `npx tsx server/advanced-diagnostics.ts` - Tests approfondis de diagnostic
 - `npx tsx server/final-diagnostic.ts` - Diagnostic final avec logs détaillés
 
+## Déploiement
+
+### Déploiement sur Render
+
+1. Forkez ce dépôt sur votre compte GitHub
+2. Créez un compte sur [Render](https://render.com/)
+3. Connectez votre compte GitHub à Render
+4. Créez un nouveau service web :
+   - Choisissez "Web Service"
+   - Connectez votre dépôt
+   - Configurez les variables d'environnement :
+     - `DATABASE_URL` - URL de votre base de données PostgreSQL
+     - `EMAIL_USER` - Adresse email pour l'envoi d'emails
+     - `EMAIL_PASS` - Mot de passe de l'adresse email
+     - `JWT_SECRET` - Secret pour les tokens JWT
+     - `SESSION_SECRET` - Secret pour les sessions
+     - `PAYDUNYA_MASTER_KEY` - Clé maîtresse PayDunya
+     - `PAYDUNYA_PRIVATE_KEY` - Clé privée PayDunya
+     - `PAYDUNYA_TOKEN` - Token PayDunya
+     - `PAYDUNYA_MODE` - Mode PayDunya (test ou live)
+5. Déployez le service
+
+Pour des instructions détaillées, consultez [RENDER_DEPLOYMENT_GUIDE.md](RENDER_DEPLOYMENT_GUIDE.md)
+
+### Déploiement avec Docker
+
+1. Construisez l'image Docker :
+   ```bash
+   docker build -t streamflix .
+   ```
+2. Exécutez le conteneur :
+   ```bash
+   docker run -p 10000:10000 \
+     -e DATABASE_URL=your_database_url \
+     -e EMAIL_USER=your_email \
+     -e EMAIL_PASS=your_password \
+     -e JWT_SECRET=your_jwt_secret \
+     -e SESSION_SECRET=your_session_secret \
+     streamflix
+   ```
+
+Pour des instructions détaillées, consultez [DEPLOYMENT.md](DEPLOYMENT.md)
+
 ## Démarrage
 
 ```bash
@@ -87,3 +130,5 @@ npm run dev:client
 - `EMAIL_CONFIGURATION.md` - Guide de configuration des emails
 - `GMAIL_SETUP_GUIDE.md` - Guide détaillé de configuration Gmail
 - `server/TROUBLESHOOTING_CHECKLIST.md` - Liste de vérification pour le dépannage des emails
+- `RENDER_DEPLOYMENT_GUIDE.md` - Guide de déploiement sur Render
+- `DEPLOYMENT.md` - Guide de déploiement détaillé

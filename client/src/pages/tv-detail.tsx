@@ -2,7 +2,7 @@ import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Play, Plus, Heart, Share2, Star, Calendar, Clock, Tv, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { tmdbService } from "@/lib/tmdb";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useShare } from "@/hooks/use-share";
@@ -12,27 +12,51 @@ export default function TVDetail() {
   const { id } = useParams<{ id: string }>();
   const tvId = parseInt(id || "0");
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set([1])); // First season expanded by default
+  // Cache of episodes per season
+  const [seasonEpisodes, setSeasonEpisodes] = useState<Record<number, any[]>>({});
   const { toggleFavorite, checkFavorite, isAddingToFavorites } = useFavorites();
   const { shareCurrentPage } = useShare();
 
-  const { data: tvDetails, isLoading } = useQuery({
+  const { data: tvDetails, isLoading, error } = useQuery({
     queryKey: [`/api/tmdb/tv/${tvId}`],
     queryFn: () => tmdbService.getTVShowDetails(tvId),
     enabled: !!tvId,
   });
 
+  // Load episodes for initially expanded seasons
+  useEffect(() => {
+    const loadInitialEpisodes = async () => {
+      if (tvDetails && tvId && !seasonEpisodes[1]) {
+        // Extract the actual TV show data from the response
+        const tv = (tvDetails as any).show || tvDetails;
+        
+        // Only try to load episodes if we have season data
+        if (tv.seasons && tv.seasons.length > 0) {
+          try {
+            const season = await tmdbService.getTVSeasonDetails(tvId, 1);
+            const episodes = Array.isArray(season?.episodes) ? season.episodes : [];
+            setSeasonEpisodes(prev => ({ ...prev, [1]: episodes }));
+          } catch (e) {
+            console.error("Failed to load initial season episodes", e);
+            // Set empty array on error to prevent infinite loading state
+            setSeasonEpisodes(prev => ({ ...prev, [1]: [] }));
+          }
+        }
+      }
+    };
+
+    loadInitialEpisodes();
+  }, [tvDetails, tvId, seasonEpisodes]);
+
   // Check if series is favorite
   const { data: favoriteStatus } = checkFavorite(tvId);
   const isFavorite = favoriteStatus?.isFavorite || false;
 
+  const primaryGenreId = (tvDetails as any)?.show?.genres?.[0]?.id ?? (tvDetails as any)?.genres?.[0]?.id;
   const { data: similarShows } = useQuery({
-    queryKey: [`/api/tmdb/tv/similar/${tvId}`],
-    queryFn: () => {
-      // For now, get TV shows from the same primary genre
-      const primaryGenre = tvDetails?.genres?.[0]?.id;
-      return primaryGenre ? tmdbService.getTVShowsByGenre(primaryGenre) : [];
-    },
-    enabled: !!tvDetails?.genres?.[0]?.id,
+    queryKey: [`/api/tmdb/tv/similar/${tvId}`, primaryGenreId],
+    queryFn: () => tmdbService.getTVShowsByGenre(primaryGenreId),
+    enabled: !!primaryGenreId,
   });
 
   const handleToggleFavorite = async () => {
@@ -43,7 +67,7 @@ export default function TVDetail() {
         name: tvDetails.name,
         poster_path: tvDetails.poster_path,
         first_air_date: tvDetails.first_air_date,
-        genre_ids: tvDetails.genres?.map(g => g.id) || [],
+        genre_ids: tvDetails.genres?.map((g: any) => g.id) || [],
         vote_average: tvDetails.vote_average,
         vote_count: tvDetails.vote_count,
         popularity: tvDetails.popularity,
@@ -87,6 +111,21 @@ export default function TVDetail() {
     );
   }
 
+  if (error) {
+    console.error("Error loading TV show:", error);
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center" data-testid="tv-detail-error">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground mb-4">Erreur de chargement</h1>
+          <p className="text-muted-foreground mb-4">Impossible de charger les détails de la série</p>
+          <Link href="/series">
+            <Button>Retour aux séries</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!tvDetails) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center" data-testid="tv-detail-error">
@@ -100,10 +139,12 @@ export default function TVDetail() {
     );
   }
 
-  const { credits, videos } = tvDetails;
-  const tv = tvDetails; // The TV details are directly in the response
-  const cast = credits.cast.slice(0, 8);
-  const trailer = videos.results.find(video => video.type === "Trailer" && video.site === "YouTube");
+  // Extract the actual TV show data from the response
+  // The backend returns { show, credits, videos } but sometimes it might return the data directly
+  const tv = (tvDetails as any).show || tvDetails;
+  const { credits, videos } = tvDetails as any;
+  const cast = credits?.cast?.slice(0, 8) || [];
+  const trailer = videos?.results?.find((video: any) => video.type === "Trailer" && video.site === "YouTube");
 
   const formatEpisodeRuntime = (runtimes: number[] | undefined) => {
     if (!runtimes || runtimes.length === 0) return null;
@@ -121,7 +162,7 @@ export default function TVDetail() {
     return `${startYear}-en cours`;
   };
 
-  const toggleSeason = (seasonNumber: number) => {
+  const toggleSeason = async (seasonNumber: number) => {
     setExpandedSeasons(prev => {
       const newSet = new Set(prev);
       if (newSet.has(seasonNumber)) {
@@ -131,6 +172,19 @@ export default function TVDetail() {
       }
       return newSet;
     });
+
+    // Lazy-load episodes when expanding a season the first time
+    if (!seasonEpisodes[seasonNumber] && tvId) {
+      try {
+        const season = await tmdbService.getTVSeasonDetails(tvId, seasonNumber);
+        const episodes = Array.isArray(season?.episodes) ? season.episodes : [];
+        setSeasonEpisodes(prev => ({ ...prev, [seasonNumber]: episodes }));
+      } catch (e) {
+        console.error("Failed to load season episodes", e);
+        // Set empty array on error to prevent infinite loading state
+        setSeasonEpisodes(prev => ({ ...prev, [seasonNumber]: [] }));
+      }
+    }
   };
 
   const generateEpisodes = (seasonNumber: number, episodeCount: number) => {
@@ -152,6 +206,9 @@ export default function TVDetail() {
           alt={tv.name}
           className="w-full h-full object-cover"
           data-testid="tv-backdrop"
+          onError={(e) => {
+            e.currentTarget.src = "/placeholder-backdrop.jpg";
+          }}
         />
         <div className="absolute inset-0 bg-black/50"></div>
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
@@ -194,7 +251,7 @@ export default function TVDetail() {
                 <span>{formatEpisodeRuntime(tv.episode_run_time)}</span>
               </span>
             )}
-            <span>{tv.genres?.map(g => g.name).join(", ")}</span>
+            <span>{tv.genres?.map((g: any) => g.name).join(", ")}</span>
             
             {tv.vote_average > 0 && (
               <span className="flex items-center space-x-1">
@@ -259,7 +316,7 @@ export default function TVDetail() {
           <section className="mb-12" data-testid="tv-cast">
             <h2 className="text-2xl font-bold text-foreground mb-6">Acteurs</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-4">
-              {cast.map((person) => (
+              {cast.map((person: any) => (
                 <div key={person.id} className="text-center" data-testid={`cast-member-${person.id}`}>
                   <div className="relative pb-[150%] mb-3 rounded-md overflow-hidden">
                     <img
@@ -287,35 +344,86 @@ export default function TVDetail() {
         {tv.seasons && tv.seasons.length > 0 && (
           <div className="mt-8">
             <h3 className="text-xl font-bold mb-4">Saisons</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-4">
               {tv.seasons.map((season: any) => (
-                <div 
-                  key={season.id} 
-                  className="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer"
-                  onClick={() => navigate(`/watch/tv/${tv.id}/${season.season_number}/1`)}
-                >
-                  <div className="flex items-center gap-4">
-                    {season.poster_path ? (
-                      <img 
-                        src={`https://image.tmdb.org/t/p/w200${season.poster_path}`}
-                        alt={season.name}
-                        className="w-16 h-24 object-cover rounded"
-                      />
-                    ) : (
-                      <div className="w-16 h-24 bg-gray-700 rounded flex items-center justify-center">
-                        <Tv className="w-8 h-8 text-gray-500" />
-                      </div>
-                    )}
-                    <div>
-                      <h4 className="font-semibold">{season.name}</h4>
-                      <p className="text-sm text-gray-400">{season.episode_count} épisodes</p>
-                      {season.air_date && (
-                        <p className="text-xs text-gray-500">
-                          {new Date(season.air_date).getFullYear()}
-                        </p>
+                <div key={season.id} className="bg-gray-800 rounded-lg p-4">
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => toggleSeason(season.season_number)}
+                  >
+                    <div className="flex items-center gap-4">
+                      {season.poster_path ? (
+                        <img 
+                          src={`https://image.tmdb.org/t/p/w200${season.poster_path}`}
+                          alt={season.name}
+                          className="w-16 h-24 object-cover rounded"
+                          onError={(e) => {
+                            e.currentTarget.src = "/placeholder-poster.jpg";
+                          }}
+                        />
+                      ) : (
+                        <div className="w-16 h-24 bg-gray-700 rounded flex items-center justify-center">
+                          <Tv className="w-8 h-8 text-gray-500" />
+                        </div>
                       )}
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-semibold">{season.name}</h4>
+                            <p className="text-sm text-gray-400">{season.episode_count} épisodes</p>
+                            {season.air_date && (
+                              <p className="text-xs text-gray-500">
+                                {new Date(season.air_date).getFullYear()}
+                              </p>
+                            )}
+                          </div>
+                          <ChevronDown className={`w-5 h-5 transition-transform ${expandedSeasons.has(season.season_number) ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </button>
+
+                  {/* Episode list */}
+                  {expandedSeasons.has(season.season_number) && (
+                    <div className="mt-4 border-t border-gray-700 pt-4 space-y-3">
+                      {(() => {
+                        const episodes = seasonEpisodes[season.season_number];
+                        if (typeof episodes === "undefined") {
+                          return <div className="text-sm text-gray-400">Chargement des épisodes...</div>;
+                        }
+                        if (episodes.length === 0) {
+                          return <div className="text-sm text-gray-400">Aucun épisode disponible pour cette saison.</div>;
+                        }
+                        return (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {episodes.map((ep: any) => (
+                              <Link
+                                key={`${season.season_number}-${ep.episode_number}`}
+                                href={`/watch/tv/${tv.id}/${season.season_number}/${ep.episode_number}`}
+                                className="group bg-gray-900/40 hover:bg-gray-900 rounded p-3 transition-colors block"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-sm font-semibold text-gray-200">
+                                    {ep.episode_number}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="font-medium group-hover:text-white line-clamp-1">{ep.name || `Épisode ${ep.episode_number}`}</div>
+                                    {ep.air_date && (
+                                      <div className="text-xs text-gray-400">{new Date(ep.air_date).toLocaleDateString()}</div>
+                                    )}
+                                    {ep.overview && (
+                                      <div className="text-xs text-gray-400 line-clamp-2 mt-1">{ep.overview}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </Link>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

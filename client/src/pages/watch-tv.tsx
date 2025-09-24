@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
-import { Home, Maximize, Minimize, Volume2, VolumeX, Play, Pause, Settings, SkipBack, SkipForward, ChevronLeft, ChevronRight, RotateCcw, RotateCw, Download, Share2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Maximize, Minimize, Volume2, VolumeX, Play, Pause, Settings, SkipBack, SkipForward, RotateCcw, RotateCw, Download, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,13 +9,18 @@ import { tmdbService } from "@/lib/tmdb";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import AdvertisementBanner from "@/components/AdvertisementBanner";
 import { useAuthCheck } from "@/hooks/useAuthCheck";
+import ZuploadVideoPlayer from "@/components/zupload-video-player";
+import InPlayerAdManager from "@/components/InPlayerAdManager";
+import { adConfig } from "@/config/adConfig";
+import SubscriptionGuard from "@/components/SubscriptionGuard";
 
 export default function WatchTV() {
   const { shouldShowAds } = useAuthCheck();
-  const { id, season = "1", episode = "1" } = useParams<{ id: string; season?: string; episode?: string }>();
+  const { id, season, episode } = useParams<{ id: string; season: string; episode: string }>();
   const tvId = parseInt(id || "0");
-  const currentSeason = parseInt(season);
-  const currentEpisode = parseInt(episode);
+  const seasonNumber = parseInt(season || "1");
+  const episodeNumber = parseInt(episode || "1");
+  const [, navigate] = useLocation();
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const isMountedRef = useRef(true);
@@ -458,18 +463,51 @@ export default function WatchTV() {
   }, [isYouTubeVideo]);
 
   const goToPreviousEpisode = useCallback(() => {
-    if (!isMountedRef.current) return;
-    
-    // In a real app, this would navigate to the previous episode
-    console.log('Go to previous episode');
-  }, []);
+    if (!isMountedRef.current || !tvDetails) return;
+    const show: any = (tvDetails as any).show || tvDetails;
+    const seasons: any[] = (show?.seasons || [])
+      .filter((s: any) => typeof s?.season_number === 'number')
+      .sort((a: any, b: any) => (a.season_number || 0) - (b.season_number || 0));
+
+    // If same season and episode > 1, just decrement episode
+    if (episodeNumber > 1) {
+      navigate(`/watch/tv/${tvId}/${seasonNumber}/${episodeNumber - 1}`);
+      return;
+    }
+
+    // Otherwise, find previous season with episodes (skip specials season 0)
+    const prevSeason = [...seasons]
+      .filter((s: any) => (s.season_number || 0) < seasonNumber && (s.episode_count || 0) > 0 && s.season_number !== 0)
+      .sort((a: any, b: any) => (b.season_number || 0) - (a.season_number || 0))[0];
+
+    if (prevSeason) {
+      const lastEp = Math.max(1, prevSeason.episode_count || 1);
+      navigate(`/watch/tv/${tvId}/${prevSeason.season_number}/${lastEp}`);
+    }
+  }, [episodeNumber, seasonNumber, tvDetails, tvId, navigate]);
 
   const goToNextEpisode = useCallback(() => {
-    if (!isMountedRef.current) return;
-    
-    // In a real app, this would navigate to the next episode
-    console.log('Go to next episode');
-  }, []);
+    if (!isMountedRef.current || !tvDetails) return;
+    const show: any = (tvDetails as any).show || tvDetails;
+    const seasons: any[] = (show?.seasons || [])
+      .filter((s: any) => typeof s?.season_number === 'number')
+      .sort((a: any, b: any) => (a.season_number || 0) - (b.season_number || 0));
+
+    const currentSeasonObj = seasons.find((s: any) => s.season_number === seasonNumber);
+    const currentSeasonEpCount = currentSeasonObj?.episode_count || 0;
+
+    // If we have more episodes in current season, increment episode
+    if (currentSeasonEpCount > 0 && episodeNumber < currentSeasonEpCount) {
+      navigate(`/watch/tv/${tvId}/${seasonNumber}/${episodeNumber + 1}`);
+      return;
+    }
+
+    // Otherwise, move to the first episode of the next season (skip specials season 0)
+    const nextSeason = seasons.find((s: any) => s.season_number > seasonNumber && (s.episode_count || 0) > 0 && s.season_number !== 0);
+    if (nextSeason) {
+      navigate(`/watch/tv/${tvId}/${nextSeason.season_number}/1`);
+    }
+  }, [episodeNumber, seasonNumber, tvDetails, tvId, navigate]);
 
   const handleGoHome = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -500,7 +538,7 @@ export default function WatchTV() {
     console.log('Download requested for episode');
   }, []);
 
-  const shareShow = useCallback(() => {
+  const shareEpisode = useCallback(() => {
     if (!isMountedRef.current) return;
     
     // In a real app, this would open share options
@@ -515,6 +553,11 @@ export default function WatchTV() {
         .catch(err => console.log('Copy failed:', err));
     }
   }, [tvDetails?.name]);
+
+  const handleVideoError = useCallback((error: string) => {
+    console.error('Video error:', error);
+    // Handle video error as needed
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (!isMountedRef.current) return;
@@ -587,324 +630,320 @@ export default function WatchTV() {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-black text-white relative">
-      {/* Video container */}
-      <div className="relative w-full h-screen">
-        {/* Zupload Video Player */}
-        {isZuploadVideo ? (
-          <div className="w-full h-screen flex items-center justify-center bg-black">
-            <div className="w-full h-full flex items-center justify-center">
-              <iframe
-                src={contentWithVideo?.odyseeUrl}
-                className="w-full h-full"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                title={`Lecture de ${tvDetails.name} - S${currentSeason} E${currentEpisode}`}
-                sandbox="allow-scripts allow-same-origin allow-presentation allow-popups-to-escape-sandbox allow-popups allow-forms"
+    <SubscriptionGuard>
+      <div className="relative w-full h-screen bg-black overflow-hidden">
+        {/* Video container */}
+        <div className="relative w-full h-screen">
+          {/* Zupload Video Player - Direct integration */}
+          {isZuploadVideo && contentWithVideo?.odyseeUrl ? (
+            <div className="w-full h-full">
+              <ZuploadVideoPlayer 
+                videoUrl={contentWithVideo.odyseeUrl}
+                title={tvDetails?.show?.name || 'Série TV'}
+                onVideoError={handleVideoError}
+                adSlotId="tv-video-ad"
+                youtubeAdVideoId="dQw4w9WgXcQ" // Example YouTube video ID
               />
             </div>
-          </div>
-        ) : (
-          // Other video types (YouTube, Odysee, etc.) or fallback message
-          <>
-            {/* Video player has been removed for non-Zupload videos */}
-            <div className="w-full h-screen flex items-center justify-center bg-black">
-              <div className="text-center p-8">
-                <div className="text-4xl mb-4">📺</div>
-                <h2 className="text-2xl font-bold mb-2">Lecteur de série non disponible</h2>
-                <p className="text-gray-400 mb-4">Cette vidéo n'est pas disponible pour le moment.</p>
-                <p className="text-gray-500 text-sm mb-6">Seules les vidéos Zupload sont actuellement supportées.</p>
-                <Button onClick={(e) => handleGoHome(e)} variant="default">
-                  <Home className="w-4 h-4 mr-2" />
-                  Retour à l'accueil
-                </Button>
+          ) : (
+            // Other video types (YouTube, Odysee, etc.) or fallback message
+            <>
+              {/* Video player has been removed for non-Zupload videos */}
+              <div className="w-full h-screen flex items-center justify-center bg-black">
+                <div className="text-center p-8">
+                  <div className="text-4xl mb-4">🎬</div>
+                  <h2 className="text-2xl font-bold mb-2">Lecteur de série non disponible</h2>
+                  <p className="text-gray-400 mb-4">Cette vidéo n'est pas disponible pour le moment.</p>
+                  <p className="text-gray-500 text-sm mb-6">Seules les vidéos Zupload sont actuellement supportées.</p>
+                  <Button onClick={handleGoHome} variant="default">
+                    <Home className="w-4 h-4 mr-2" />
+                    Retour à l'accueil
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+          
+          {/* Buffering Indicator */}
+          {isBuffering && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+              <div className="bg-black/80 text-white px-4 py-2 rounded-lg">
+                <div className="animate-spin w-6 h-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
+                <div className="text-sm">Chargement...</div>
               </div>
             </div>
-          </>
-        )}
-        
-        {/* Buffering Indicator */}
-        {isBuffering && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div className="bg-black/80 text-white px-4 py-2 rounded-lg">
-              <div className="animate-spin w-6 h-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
-              <div className="text-sm">Chargement...</div>
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Home Button - Fixed at top-left edge */}
-        <Button 
-          onClick={(e) => handleGoHome(e)}
-          variant="ghost" 
-          size="sm" 
-          className="absolute top-2 left-2 z-50 bg-black/70 text-white hover:bg-black/90 transition-all duration-200 border border-white/20 backdrop-blur-sm"
-          title="Retour à l'accueil"
-        >
-          <Home className="w-4 h-4 mr-2" />
-          Accueil
-        </Button>
-
-        {/* Controls Overlay - only show for non-Odysee and non-Zupload videos */}
-        {!isOdyseeVideo && !isZuploadVideo && (
-          <div 
-            className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/60 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
+          {/* Home Button - Fixed at top-left edge */}
+          <Button 
+            onClick={handleGoHome}
+            variant="ghost" 
+            size="sm" 
+            className="absolute top-2 left-2 z-50 bg-black/70 text-white hover:bg-black/90 transition-all duration-200 border border-white/20 backdrop-blur-sm"
+            title="Retour à l'accueil"
           >
-            {/* Top Bar */}
-            <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                {/* Empty space where home button was */}
-              </div>
-              <div className="text-white text-center">
-                <div className="text-xl font-semibold">{tvDetails.name}</div>
-                <div className="text-sm text-gray-300">Season {currentSeason} • Episode {currentEpisode}</div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={shareShow}
-                  variant="ghost"
-                  size="sm"
-                  className="text-white hover:bg-white/20"
-                >
-                  <Share2 className="w-4 h-4" />
-                </Button>
-                <Button
-                  onClick={downloadEpisode}
-                  variant="ghost"
-                  size="sm"
-                  className="text-white hover:bg-white/20"
-                >
-                  <Download className="w-4 h-4" />
-                </Button>
-                
-                <Select value={currentSeason.toString()}>
-                  <SelectTrigger className="w-24 bg-black/50 text-white border-white/20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: tvDetails.number_of_seasons || 1 }, (_, i) => i + 1).map(seasonNum => (
-                      <SelectItem key={seasonNum} value={seasonNum.toString()}>
-                        S{seasonNum}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                <Select value={currentEpisode.toString()}>
-                  <SelectTrigger className="w-24 bg-black/50 text-white border-white/20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map(episodeNum => (
-                      <SelectItem key={episodeNum} value={episodeNum.toString()}>
-                        E{episodeNum}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            <Home className="w-4 h-4 mr-2" />
+            Accueil
+          </Button>
 
-            {/* Center Controls */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex items-center space-x-8">
-                <Button
-                  onClick={rewind15}
-                  variant="ghost"
-                  size="lg"
-                  className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                >
-                  <RotateCcw className="w-6 h-6" />
-                </Button>
-                
-                <Button
-                  onClick={handlePlayPause}
-                  variant="ghost"
-                  size="lg"
-                  className="w-20 h-20 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                >
-                  {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
-                </Button>
-                
-                <Button
-                  onClick={forward15}
-                  variant="ghost"
-                  size="lg"
-                  className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                >
-                  <RotateCw className="w-6 h-6" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Episode Navigation */}
-            <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-              <Button
-                onClick={goToPreviousEpisode}
-                variant="ghost"
-                size="lg"
-                className="w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                disabled={currentEpisode <= 1}
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </Button>
-            </div>
-            
-            <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
-              <Button
-                onClick={goToNextEpisode}
-                variant="ghost"
-                size="lg"
-                className="w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                disabled={currentEpisode >= (tvDetails.number_of_episodes || 1)}
-              >
-                <ChevronRight className="w-6 h-6" />
-              </Button>
-            </div>
-
-            {/* Bottom Controls */}
-            <div className="absolute bottom-4 left-4 right-4 space-y-4">
-              {/* Progress Bar */}
-              <div className="flex items-center space-x-4">
-                <span className="text-white text-sm min-w-[60px]">
-                  {formatTime(currentTime)}
-                </span>
-                <Slider
-                  value={[currentTime]}
-                  onValueChange={handleSeek}
-                  max={duration}
-                  step={1}
-                  className="flex-1"
-                />
-                <span className="text-white text-sm min-w-[60px]">
-                  {formatTime(duration)}
-                </span>
-              </div>
-
-              {/* Control Buttons */}
-              <div className="flex items-center justify-between">
+          {/* Controls Overlay - only show for non-Odysee and non-Zupload videos */}
+          {!isOdyseeVideo && !isZuploadVideo && (
+            <div 
+              className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/60 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
+              onMouseMove={() => {
+                if (!isTransitioning) {
+                  setShowControls(true);
+                }
+              }}
+            >
+              {/* Top Bar */}
+              <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  {/* Empty space where home button was */}
+                </div>
+                <div className="text-white text-xl font-semibold text-center flex-1">
+                  {tvDetails?.show?.name} - S{seasonNumber} E{episodeNumber}
+                </div>
                 <div className="flex items-center space-x-2">
                   <Button
-                    onClick={handlePlayPause}
+                    onClick={shareEpisode}
                     variant="ghost"
                     size="sm"
                     className="text-white hover:bg-white/20"
                   >
-                    {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                    <Share2 className="w-4 h-4" />
                   </Button>
-                  
-                  <Button
-                    onClick={skipBackward}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <SkipBack className="w-5 h-5" />
-                  </Button>
-                  
-                  <Button
-                    onClick={skipForward}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <SkipForward className="w-5 h-5" />
-                  </Button>
-
-                  <div className="flex items-center space-x-2 ml-4">
+                  {/* Removed download button for Zupload videos */}
+                  {!isZuploadVideo && (
                     <Button
-                      onClick={handleMute}
+                      onClick={downloadEpisode}
                       variant="ghost"
                       size="sm"
                       className="text-white hover:bg-white/20"
                     >
-                      {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                      <Download className="w-4 h-4" />
                     </Button>
-                    <Slider
-                      value={volume}
-                      onValueChange={handleVolumeChange}
-                      max={100}
-                      step={1}
-                      className="w-24"
-                    />
-                  </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Center Controls */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex items-center space-x-8">
+                  <Button
+                    onClick={rewind15}
+                    variant="ghost"
+                    size="lg"
+                    className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  >
+                    <RotateCcw className="w-6 h-6" />
+                  </Button>
+                  
+                  <Button
+                    onClick={handlePlayPause}
+                    variant="ghost"
+                    size="lg"
+                    className="w-20 h-20 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  >
+                    {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
+                  </Button>
+                  
+                  <Button
+                    onClick={forward15}
+                    variant="ghost"
+                    size="lg"
+                    className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  >
+                    <RotateCw className="w-6 h-6" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Bottom Controls */}
+              <div className="absolute bottom-4 left-4 right-4 space-y-4">
+                {/* Progress Bar */}
+                <div className="flex items-center space-x-4">
+                  <span className="text-white text-sm min-w-[60px]">
+                    {formatTime(currentTime)}
+                  </span>
+                  <Slider
+                    value={[currentTime]}
+                    onValueChange={handleSeek}
+                    max={duration}
+                    step={1}
+                    className="flex-1"
+                  />
+                  <span className="text-white text-sm min-w-[60px]">
+                    {formatTime(duration)}
+                  </span>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
+                {/* Control Buttons */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      onClick={handlePlayPause}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                    </Button>
+                    
+                    <Button
+                      onClick={skipBackward}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      <SkipBack className="w-5 h-5" />
+                    </Button>
+                    
+                    <Button
+                      onClick={skipForward}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      <SkipForward className="w-5 h-5" />
+                    </Button>
+
+                    <div className="flex items-center space-x-2 ml-4">
                       <Button
+                        onClick={handleMute}
                         variant="ghost"
                         size="sm"
                         className="text-white hover:bg-white/20"
                       >
-                        <Settings className="w-5 h-5" />
+                        {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
                       </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-56 bg-black/90 border-white/20" side="top">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-white text-sm font-medium block mb-2">Vitesse de lecture</label>
-                          <Select value={playbackSpeed.toString()} onValueChange={handlePlaybackSpeedChange}>
-                            <SelectTrigger className="bg-white/10 text-white border-white/20">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="0.25">0.25x</SelectItem>
-                              <SelectItem value="0.5">0.5x</SelectItem>
-                              <SelectItem value="0.75">0.75x</SelectItem>
-                              <SelectItem value="1">Normal</SelectItem>
-                              <SelectItem value="1.25">1.25x</SelectItem>
-                              <SelectItem value="1.5">1.5x</SelectItem>
-                              <SelectItem value="1.75">1.75x</SelectItem>
-                              <SelectItem value="2">2x</SelectItem>
-                            </SelectContent>
-                          </Select>
+                      <Slider
+                        value={volume}
+                        onValueChange={handleVolumeChange}
+                        max={100}
+                        step={1}
+                        className="w-24"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-white hover:bg-white/20"
+                        >
+                          <Settings className="w-5 h-5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 bg-black/90 border-white/20" side="top">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-white text-sm font-medium">Vitesse de lecture</label>
+                            <Select value={playbackSpeed.toString()} onValueChange={handlePlaybackSpeedChange}>
+                              <SelectTrigger className="w-full bg-black/50 text-white border-white/20">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0.25">0.25x</SelectItem>
+                                <SelectItem value="0.5">0.5x</SelectItem>
+                                <SelectItem value="0.75">0.75x</SelectItem>
+                                <SelectItem value="1">Normal</SelectItem>
+                                <SelectItem value="1.25">1.25x</SelectItem>
+                                <SelectItem value="1.5">1.5x</SelectItem>
+                                <SelectItem value="1.75">1.75x</SelectItem>
+                                <SelectItem value="2">2x</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-white text-sm font-medium">Qualité</label>
+                            <Select value={quality} onValueChange={handleQualityChange}>
+                              <SelectTrigger className="w-full bg-black/50 text-white border-white/20">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="240p">240p</SelectItem>
+                                <SelectItem value="360p">360p</SelectItem>
+                                <SelectItem value="480p">480p</SelectItem>
+                                <SelectItem value="720p">720p HD</SelectItem>
+                                <SelectItem value="1080p">1080p Full HD</SelectItem>
+                                <SelectItem value="4k">4K Ultra HD</SelectItem>
+                                <SelectItem value="auto">Auto</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
-                        <div>
-                          <label className="text-white text-sm font-medium block mb-2">Qualité</label>
-                          <Select value={quality} onValueChange={handleQualityChange}>
-                            <SelectTrigger className="bg-white/10 text-white border-white/20">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="240p">240p</SelectItem>
-                              <SelectItem value="360p">360p</SelectItem>
-                              <SelectItem value="480p">480p</SelectItem>
-                              <SelectItem value="720p">720p HD</SelectItem>
-                              <SelectItem value="1080p">1080p Full HD</SelectItem>
-                              <SelectItem value="4k">4K Ultra HD</SelectItem>
-                              <SelectItem value="auto">Auto</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  
-                  <Button
-                    onClick={toggleFullscreen}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-white/20"
-                  >
-                    {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                  </Button>
+                      </PopoverContent>
+                    </Popover>
+                    
+                    <Button
+                      onClick={toggleFullscreen}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20"
+                    >
+                      {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Keyboard Shortcuts Help - only show for non-Odysee and non-Zupload videos */}
-        {!isOdyseeVideo && !isZuploadVideo && (
-          <div className="absolute bottom-20 left-4 text-white text-xs opacity-50">
-            <p>Raccourcis: Espace/K (Play/Pause) • ← → (Navigation) • ↑ ↓ (Volume) • M (Muet) • F (Plein écran) • N (Épisode suivant) • P (Épisode précédent)</p>
-          </div>
-        )}
+          {/* Keyboard Shortcuts Help - only show for non-Odysee and non-Zupload videos */}
+          {!isOdyseeVideo && !isZuploadVideo && (
+            <div className="absolute bottom-20 left-4 text-white text-xs opacity-50">
+              <p>Raccourcis: Espace/K (Play/Pause) • ← → (Navigation) • ↑ ↓ (Volume) • M (Muet) • F (Plein écran)</p>
+            </div>
+          )}
 
+          {/* Episode Navigation - only show for non-Odysee and non-Zupload videos */}
+          {!isOdyseeVideo && !isZuploadVideo && (
+            <div className="absolute bottom-24 left-4 right-4 flex justify-between">
+              <Button
+                onClick={goToPreviousEpisode}
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-white/20"
+                disabled={episodeNumber <= 1 && seasonNumber <= 1}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Épisode précédent
+              </Button>
+              
+              <Button
+                onClick={goToNextEpisode}
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-white/20"
+              >
+                Épisode suivant
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          )}
+
+        </div>
+        
+        {/* In-player ad manager - show ads only for unauthenticated users */}
+        {shouldShowAds && (
+          <InPlayerAdManager 
+            isAuthenticated={false} // Force to false since we're checking shouldShowAds
+            adInterval={adConfig.adInterval}
+            adDuration={adConfig.adDuration}
+            youtubeVideoIds={adConfig.youtubeAdVideoIds}
+            onAdStart={() => {
+              console.log("TV page: Ad started");
+            }}
+            onAdEnd={() => {
+              console.log("TV page: Ad ended");
+            }}
+          />
+        )}
       </div>
-    </div>
+    </SubscriptionGuard>
   );
 }

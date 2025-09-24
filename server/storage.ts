@@ -12,6 +12,7 @@ import {
   notifications,
   userSessions,
   viewTracking,
+  episodes,
   type User, 
   type InsertUser, 
   type Favorite, 
@@ -415,6 +416,43 @@ export class DatabaseStorage implements IStorage {
       .from(payments)
       .where(eq(payments.userId, userId))
       .orderBy(desc(payments.createdAt));
+  }
+
+  async getPaymentById(paymentId: string): Promise<Payment | undefined> {
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.id, paymentId));
+    return payment || undefined;
+  }
+
+  async updatePaymentStatus(paymentId: string, status: string): Promise<Payment> {
+    const [updated] = await db
+      .update(payments)
+      .set({ status } as Partial<Payment>)
+      .where(eq(payments.id, paymentId))
+      .returning();
+    return updated;
+  }
+
+  // Add a method to create or update subscription
+  async createOrUpdateSubscription(subscriptionData: InsertSubscription): Promise<Subscription> {
+    // Check if user already has an active subscription
+    const existingSubscription = await this.getUserSubscription(subscriptionData.userId);
+    
+    if (existingSubscription) {
+      // Update existing subscription
+      const [updated] = await db
+        .update(subscriptions)
+        .set(subscriptionData as any)
+        .where(eq(subscriptions.id, existingSubscription.id))
+        .returning();
+      return updated;
+    } else {
+      // Create new subscription
+      const [newSubscription] = await db.insert(subscriptions).values(subscriptionData as any).returning();
+      return newSubscription;
+    }
   }
 
   // Banners
@@ -942,25 +980,29 @@ export class DatabaseStorage implements IStorage {
   
   // Episode Management
   async createEpisode(episode: any): Promise<any> {
-    // Import episodes table
-    const { episodes } = await import('@shared/schema');
     const [newEpisode] = await db.insert(episodes).values(episode).returning();
     return newEpisode;
   }
 
   async getEpisodesByContentId(contentId: string): Promise<any[]> {
-    // Import episodes table
-    const { episodes } = await import('@shared/schema');
-    return await db
-      .select()
-      .from(episodes)
-      .where(eq(episodes.contentId, contentId))
-      .orderBy(episodes.seasonNumber, episodes.episodeNumber);
+    try {
+      return await db
+        .select()
+        .from(episodes)
+        .where(eq(episodes.contentId, contentId))
+        .orderBy(episodes.seasonNumber, episodes.episodeNumber);
+    } catch (error: any) {
+      const msg = error?.message || '';
+      // Handle case where episodes table is not yet created/migrated
+      if (typeof msg === 'string' && (msg.includes('relation "episodes" does not exist') || msg.includes("relation 'episodes' does not exist") || msg.includes('undefined table: episodes'))) {
+        console.warn('[episodes] table missing; returning empty list. Run migrations to create the table.');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getEpisodeById(episodeId: string): Promise<any | undefined> {
-    // Import episodes table
-    const { episodes } = await import('@shared/schema');
     const [episode] = await db
       .select()
       .from(episodes)
@@ -969,8 +1011,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateEpisode(episodeId: string, data: Partial<any>): Promise<any> {
-    // Import episodes table
-    const { episodes } = await import('@shared/schema');
     const [updated] = await db
       .update(episodes)
       .set({ ...data, updatedAt: new Date() } as any)
@@ -980,8 +1020,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteEpisode(episodeId: string): Promise<void> {
-    // Import episodes table
-    const { episodes } = await import('@shared/schema');
     await db
       .delete(episodes)
       .where(eq(episodes.id, episodeId));

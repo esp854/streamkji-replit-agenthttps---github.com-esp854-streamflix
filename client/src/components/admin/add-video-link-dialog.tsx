@@ -58,6 +58,15 @@ export function AddVideoLinkDialog({ open, onOpenChange, content, getCSRFToken }
         description: "Le lien vidéo a été ajouté avec succès au contenu.",
       });
       
+      // Redirection vers le lecteur après succès
+      if (content) {
+        if (content.mediaType === 'movie') {
+          window.location.href = `/watch/movie/${content.tmdbId}`;
+        } else if (content.mediaType === 'tv') {
+          window.location.href = `/watch/tv/${content.tmdbId}/1/1`;
+        }
+      }
+      
       onOpenChange(false);
       setVideoUrl("");
     } catch (error: any) {
