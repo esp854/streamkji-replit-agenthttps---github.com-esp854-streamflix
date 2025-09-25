@@ -32,6 +32,8 @@
     "check-import-status": "tsx server/check-import-status.ts",
     "test-video-support": "tsx server/test-video-support.ts",
     "fix-video-urls": "tsx server/fix-video-urls.ts",
+    "sync-tmdb-cache": "tsx server/sync-tmdb-cache.ts",
+    "bulk-sync-tmdb": "tsx server/bulk-sync-tmdb.ts",
     "post-deploy": "tsx scripts/post-deploy.ts",
     "clean-build": "rm -rf dist node_modules/.vite && npm run build"
   },

@@ -26,239 +26,53 @@ function setCachedData(key, data) {
   });
 }
 
-// TMDB API proxy endpoints with better error handling
+// TMDB API proxy endpoints with database caching
 router.get("/tmdb/trending", async (req, res) => {
   try {
-    const apiKey = process.env.TMDB_API_KEY;
-    if (!apiKey) {
-      console.error("TMDB_API_KEY is not configured in environment variables");
-      // Return mock data if API key is not configured
-      const mockTrending = {
-        results: [
-          {
-            id: 1,
-            title: "Mock Movie 1",
-            overview: "This is a mock movie description for testing purposes.",
-            release_date: "2023-01-01",
-            vote_average: 7.5,
-            poster_path: "/mock-poster1.jpg",
-            backdrop_path: "/mock-backdrop1.jpg",
-            genre_ids: [28, 12, 878]
-          },
-          {
-            id: 2,
-            name: "Mock TV Show 1",
-            overview: "This is a mock TV show description for testing purposes.",
-            first_air_date: "2022-01-01",
-            vote_average: 8.0,
-            poster_path: "/mock-tv-poster1.jpg",
-            backdrop_path: "/mock-tv-backdrop1.jpg",
-            genre_ids: [18, 9648]
-          }
-        ]
-      };
-      return res.json(mockTrending);
-    }
+    console.log("📡 TMDB trending request received");
 
-    const cacheKey = "trending";
-    const cached = getCachedData(cacheKey);
-    if (cached) {
-      console.log("Returning cached trending data");
-      return res.json(cached);
-    }
+    // Use the cache service
+    const trendingData = await tmdbCacheService.getTrending();
 
-    const response = await fetch(
-      `https://api.themoviedb.org/3/trending/all/week?api_key=${apiKey}&language=fr-FR`
-    );
-    
-    if (!response.ok) {
-      console.error(`TMDB API error: ${response.status} ${response.statusText}`);
-      // Handle rate limiting specifically
-      if (response.status === 429) {
-        return res.status(429).json({ 
-          error: "Rate limit exceeded. Please try again later.",
-          status: 429 
-        });
-      }
-      // Return mock data on API error
-      const mockTrending = {
-        results: [
-          {
-            id: 1,
-            title: "Mock Movie 1",
-            overview: "This is a mock movie description for testing purposes.",
-            release_date: "2023-01-01",
-            vote_average: 7.5,
-            poster_path: "/mock-poster1.jpg",
-            backdrop_path: "/mock-backdrop1.jpg",
-            genre_ids: [28, 12, 878]
-          },
-          {
-            id: 2,
-            name: "Mock TV Show 1",
-            overview: "This is a mock TV show description for testing purposes.",
-            first_air_date: "2022-01-01",
-            vote_average: 8.0,
-            poster_path: "/mock-tv-poster1.jpg",
-            backdrop_path: "/mock-tv-backdrop1.jpg",
-            genre_ids: [18, 9648]
-          }
-        ]
-      };
-      return res.json(mockTrending);
-    }
+    res.json({
+      page: 1,
+      results: trendingData,
+      total_pages: 1,
+      total_results: trendingData.length
+    });
 
-    const data = await response.json();
-    
-    // Cache the result
-    setCachedData(cacheKey, data);
-    res.json(data);
   } catch (error) {
     console.error("Error fetching trending content:", error);
-    // Return mock data on error
-    const mockTrending = {
-      results: [
-        {
-          id: 1,
-          title: "Mock Movie 1",
-          overview: "This is a mock movie description for testing purposes.",
-          release_date: "2023-01-01",
-          vote_average: 7.5,
-          poster_path: "/mock-poster1.jpg",
-          backdrop_path: "/mock-backdrop1.jpg",
-          genre_ids: [28, 12, 878]
-        },
-        {
-          id: 2,
-          name: "Mock TV Show 1",
-          overview: "This is a mock TV show description for testing purposes.",
-          first_air_date: "2022-01-01",
-          vote_average: 8.0,
-          poster_path: "/mock-tv-poster1.jpg",
-          backdrop_path: "/mock-tv-backdrop1.jpg",
-          genre_ids: [18, 9648]
-        }
-      ]
-    };
-    res.json(mockTrending);
+
+    // Return static fallback data
+    const { getStaticFallbackData } = await import("../../client/src/lib/static-fallback-data.js");
+    const fallbackData = getStaticFallbackData('/trending');
+    res.json(fallbackData);
   }
 });
 
 // Popular movies
 router.get("/tmdb/popular", async (req, res) => {
   try {
-    const apiKey = process.env.TMDB_API_KEY;
-    if (!apiKey) {
-      console.error("TMDB_API_KEY is not configured in environment variables");
-      // Return mock data if API key is not configured
-      const mockPopular = {
-        results: [
-          {
-            id: 1,
-            title: "Mock Movie 1",
-            overview: "This is a mock movie description for testing purposes.",
-            release_date: "2023-01-01",
-            vote_average: 7.5,
-            poster_path: "/mock-poster1.jpg",
-            backdrop_path: "/mock-backdrop1.jpg",
-            genre_ids: [28, 12, 878]
-          },
-          {
-            id: 2,
-            title: "Mock Movie 2",
-            overview: "This is another mock movie description for testing purposes.",
-            release_date: "2023-02-01",
-            vote_average: 6.8,
-            poster_path: "/mock-poster2.jpg",
-            backdrop_path: "/mock-backdrop2.jpg",
-            genre_ids: [35, 10749]
-          }
-        ]
-      };
-      return res.json(mockPopular);
-    }
+    console.log("📡 TMDB popular movies request received");
 
-    const cacheKey = "popular";
-    const cached = getCachedData(cacheKey);
-    if (cached) {
-      console.log("Returning cached popular movies");
-      return res.json(cached);
-    }
+    // Use the cache service
+    const popularMovies = await tmdbCacheService.getPopularMovies();
 
-    const response = await fetch(
-      `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}&language=fr-FR&page=1`
-    );
-    
-    if (!response.ok) {
-      console.error(`TMDB API error: ${response.status} ${response.statusText}`);
-      // Handle rate limiting specifically
-      if (response.status === 429) {
-        return res.status(429).json({ 
-          error: "Rate limit exceeded. Please try again later.",
-          status: 429 
-        });
-      }
-      // Return mock data on API error
-      const mockPopular = {
-        results: [
-          {
-            id: 1,
-            title: "Mock Movie 1",
-            overview: "This is a mock movie description for testing purposes.",
-            release_date: "2023-01-01",
-            vote_average: 7.5,
-            poster_path: "/mock-poster1.jpg",
-            backdrop_path: "/mock-backdrop1.jpg",
-            genre_ids: [28, 12, 878]
-          },
-          {
-            id: 2,
-            title: "Mock Movie 2",
-            overview: "This is another mock movie description for testing purposes.",
-            release_date: "2023-02-01",
-            vote_average: 6.8,
-            poster_path: "/mock-poster2.jpg",
-            backdrop_path: "/mock-backdrop2.jpg",
-            genre_ids: [35, 10749]
-          }
-        ]
-      };
-      return res.json(mockPopular);
-    }
+    res.json({
+      page: 1,
+      results: popularMovies,
+      total_pages: 1,
+      total_results: popularMovies.length
+    });
 
-    const data = await response.json();
-    
-    // Cache the result
-    setCachedData(cacheKey, data);
-    res.json(data);
   } catch (error) {
     console.error("Error fetching popular movies:", error);
-    // Return mock data on error
-    const mockPopular = {
-      results: [
-        {
-          id: 1,
-          title: "Mock Movie 1",
-          overview: "This is a mock movie description for testing purposes.",
-          release_date: "2023-01-01",
-          vote_average: 7.5,
-          poster_path: "/mock-poster1.jpg",
-          backdrop_path: "/mock-backdrop1.jpg",
-          genre_ids: [28, 12, 878]
-        },
-        {
-          id: 2,
-          title: "Mock Movie 2",
-          overview: "This is another mock movie description for testing purposes.",
-          release_date: "2023-02-01",
-          vote_average: 6.8,
-          poster_path: "/mock-poster2.jpg",
-          backdrop_path: "/mock-backdrop2.jpg",
-            genre_ids: [35, 10749]
-        }
-      ]
-    };
-    res.json(mockPopular);
+
+    // Return static fallback data
+    const { getStaticFallbackData } = await import("../../client/src/lib/static-fallback-data.js");
+    const fallbackData = getStaticFallbackData('/popular');
+    res.json(fallbackData);
   }
 });
 
@@ -427,34 +241,25 @@ router.get("/tmdb/search", async (req, res) => {
 // Popular TV shows
 router.get("/tmdb/tv/popular", async (req, res) => {
   try {
-    const apiKey = process.env.TMDB_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "TMDB API key not configured" });
-    }
+    console.log("📡 TMDB popular TV shows request received");
 
-    const cacheKey = "tv-popular";
-    const cached = getCachedData(cacheKey);
-    if (cached) {
-      console.log("Returning cached popular TV shows");
-      return res.json(cached);
-    }
+    // Use the cache service
+    const popularTVShows = await tmdbCacheService.getPopularTVShows();
 
-    const response = await fetch(
-      `https://api.themoviedb.org/3/tv/popular?api_key=${apiKey}&language=fr-FR&page=1`
-    );
-    
-    if (!response.ok) {
-      throw new Error(`TMDB API error: ${response.statusText}`);
-    }
+    res.json({
+      page: 1,
+      results: popularTVShows,
+      total_pages: 1,
+      total_results: popularTVShows.length
+    });
 
-    const data = await response.json();
-    
-    // Cache the result
-    setCachedData(cacheKey, data);
-    res.json(data);
   } catch (error) {
     console.error("Error fetching popular TV shows:", error);
-    res.status(500).json({ error: "Failed to fetch popular TV shows" });
+
+    // Return static fallback data
+    const { getStaticFallbackData } = await import("../../client/src/lib/static-fallback-data.js");
+    const fallbackData = getStaticFallbackData('/tv/popular');
+    res.json(fallbackData);
   }
 });
 
