@@ -1,4 +1,5 @@
 import { TMDBMovie, TMDBResponse, MovieDetails, TMDBTVSeries, TVResponse, TVDetails, TMDB_IMAGE_BASE_URL, TMDB_POSTER_SIZE, TMDB_BACKDROP_SIZE, TMDB_PROFILE_SIZE } from "@/types/movie";
+import { getStaticFallbackData } from "./static-fallback-data";
 
 // Advanced rate limiter with exponential backoff
 class AdvancedRateLimiter {
@@ -11,7 +12,7 @@ class AdvancedRateLimiter {
   private circuitBreakerOpen: boolean = false;
   private circuitBreakerTimeout: number = 60000; // 1 minute
 
-  constructor(maxRequests: number = 30, timeWindow: number = 10000) {
+  constructor(maxRequests: number = 20, timeWindow: number = 15000) { // Reduced to 20 requests per 15 seconds
     this.maxRequests = maxRequests;
     this.timeWindow = timeWindow;
   }
@@ -111,7 +112,7 @@ class EnhancedCache {
   private ttl: number;
   private maxSize: number;
 
-  constructor(ttl: number = 15 * 60 * 1000, maxSize: number = 100) { // 15 minutes, 100 items
+  constructor(ttl: number = 30 * 60 * 1000, maxSize: number = 200) { // 30 minutes, 200 items (increased for high traffic)
     this.ttl = ttl;
     this.maxSize = maxSize;
   }
@@ -224,14 +225,27 @@ class RobustTMDBService {
   }
 
   private getMockData<T>(url: string): T {
-    // Return appropriate mock data based on the URL
+    console.warn('🔄 TMDB API rate limited, using static fallback data');
+
+    // Try to use static fallback data first
+    try {
+      const staticData = getStaticFallbackData(url);
+      if (staticData && staticData.results && staticData.results.length > 0) {
+        console.log('📦 Using static fallback data for:', url);
+        return staticData as T;
+      }
+    } catch (error) {
+      console.error('Error loading static fallback data:', error);
+    }
+
+    // Fallback to basic mock data if static data fails
     if (url.includes('/trending')) {
       return {
         results: [
           {
             id: 1,
-            title: "Contenu temporaire",
-            overview: "Contenu chargé depuis le cache local en raison de limitations API.",
+            title: "Contenu temporaire - API limitée",
+            overview: "Contenu chargé depuis le cache local. L'API TMDB est actuellement limitée. Veuillez réessayer dans quelques minutes.",
             release_date: new Date().toISOString().split('T')[0],
             vote_average: 7.5,
             poster_path: "/placeholder-poster.jpg",
@@ -247,13 +261,30 @@ class RobustTMDBService {
         results: [
           {
             id: 1,
-            title: "Film populaire",
-            overview: "Description temporaire.",
+            title: "Films populaires - Cache local",
+            overview: "Contenu chargé depuis le cache en raison de limitations API TMDB.",
             release_date: "2023-01-01",
             vote_average: 7.0,
             poster_path: "/placeholder-poster.jpg",
             backdrop_path: "/placeholder-backdrop.jpg",
             genre_ids: [28, 12]
+          }
+        ]
+      } as T;
+    }
+
+    if (url.includes('/tv/popular')) {
+      return {
+        results: [
+          {
+            id: 1,
+            name: "Séries populaires - Cache",
+            overview: "Contenu TMDB chargé depuis le cache local.",
+            first_air_date: "2022-01-01",
+            vote_average: 8.0,
+            poster_path: "/placeholder-poster.jpg",
+            backdrop_path: "/placeholder-backdrop.jpg",
+            genre_ids: [18, 9648]
           }
         ]
       } as T;
