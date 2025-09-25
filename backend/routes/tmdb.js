@@ -5,6 +5,65 @@ const router = express.Router();
 const cache = new Map();
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes (increased from 5)
 
+// Rate limiter for TMDB API calls
+class TMDBRateLimiter {
+  constructor(maxRequests = 30, timeWindow = 10000) { // 30 requests per 10 seconds (more conservative)
+    this.maxRequests = maxRequests;
+    this.timeWindow = timeWindow;
+    this.requests = [];
+    this.consecutiveErrors = 0;
+    this.lastErrorTime = 0;
+    this.circuitBreakerOpen = false;
+    this.circuitBreakerTimeout = 60000; // 1 minute
+  }
+
+  async wait() {
+    const now = Date.now();
+
+    // Check circuit breaker
+    if (this.circuitBreakerOpen) {
+      if (now - this.lastErrorTime < this.circuitBreakerTimeout) {
+        throw new Error('Circuit breaker is open - TMDB API temporarily unavailable');
+      } else {
+        this.circuitBreakerOpen = false;
+        this.consecutiveErrors = 0;
+      }
+    }
+
+    // Clean old requests
+    this.requests = this.requests.filter(time => now - time < this.timeWindow);
+
+    // Check if we're at the limit
+    if (this.requests.length >= this.maxRequests) {
+      const oldest = this.requests[0];
+      const waitTime = this.timeWindow - (now - oldest) + (Math.random() * 1000); // Add jitter
+      console.log(`Rate limit reached, waiting ${Math.round(waitTime)}ms`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return this.wait(); // Recursively check again
+    }
+
+    // Add current request
+    this.requests.push(now);
+  }
+
+  recordError() {
+    this.consecutiveErrors++;
+    this.lastErrorTime = Date.now();
+
+    if (this.consecutiveErrors >= 5) {
+      this.circuitBreakerOpen = true;
+      console.warn('Circuit breaker opened due to consecutive errors');
+    }
+  }
+
+  recordSuccess() {
+    this.consecutiveErrors = 0;
+    this.circuitBreakerOpen = false;
+  }
+}
+
+const tmdbRateLimiter = new TMDBRateLimiter();
+
 // Helper function to get cached data
 function getCachedData(key) {
   const item = cache.get(key);
@@ -108,17 +167,23 @@ router.get("/tmdb/genre/:genreId", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB request for genre ${genreId}`);
     const response = await fetch(
       `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=fr-FR&with_genres=${genreId}&page=1`
     );
-    
+
     if (!response.ok) {
       console.error(`TMDB API error: ${response.status} ${response.statusText}`);
+      tmdbRateLimiter.recordError();
+
       // Handle rate limiting specifically
       if (response.status === 429) {
-        return res.status(429).json({ 
+        return res.status(429).json({
           error: "Rate limit exceeded. Please try again later.",
-          status: 429 
+          status: 429
         });
       }
       // Return mock data on API error
@@ -140,12 +205,17 @@ router.get("/tmdb/genre/:genreId", async (req, res) => {
     }
 
     const data = await response.json();
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, data);
     res.json(data);
   } catch (error) {
     console.error("Error fetching movies by genre:", error);
+    tmdbRateLimiter.recordError();
+
     // Return mock data on error
     const mockGenreData = {
       results: [
@@ -181,6 +251,10 @@ router.get("/tmdb/movie/:id", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter before making multiple requests
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB requests for movie ${id}`);
     const [movieResponse, creditsResponse, videosResponse] = await Promise.all([
       fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${apiKey}&language=fr-FR`),
       fetch(`https://api.themoviedb.org/3/movie/${id}/credits?api_key=${apiKey}`),
@@ -188,6 +262,7 @@ router.get("/tmdb/movie/:id", async (req, res) => {
     ]);
 
     if (!movieResponse.ok || !creditsResponse.ok || !videosResponse.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error("TMDB API error");
     }
 
@@ -198,12 +273,16 @@ router.get("/tmdb/movie/:id", async (req, res) => {
     ]);
 
     const result = { movie, credits, videos };
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, result);
     res.json(result);
   } catch (error) {
     console.error("Error fetching movie details:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to fetch movie details" });
   }
 });
@@ -213,7 +292,7 @@ router.get("/tmdb/search", async (req, res) => {
   try {
     const { query } = req.query;
     const apiKey = process.env.TMDB_API_KEY;
-    
+
     if (!apiKey) {
       return res.status(500).json({ error: "TMDB API key not configured" });
     }
@@ -222,18 +301,28 @@ router.get("/tmdb/search", async (req, res) => {
       return res.status(400).json({ error: "Query parameter is required" });
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB search request for: ${query}`);
     const response = await fetch(
       `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&language=fr-FR&query=${encodeURIComponent(query)}&page=1`
     );
-    
+
     if (!response.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     res.json(data);
   } catch (error) {
     console.error("Error searching movies:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to search movies" });
   }
 });
@@ -278,21 +367,30 @@ router.get("/tmdb/tv/top_rated", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log("Making TMDB request for top rated TV shows");
     const response = await fetch(
       `https://api.themoviedb.org/3/tv/top_rated?api_key=${apiKey}&language=fr-FR&page=1`
     );
-    
+
     if (!response.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, data);
     res.json(data);
   } catch (error) {
     console.error("Error fetching top rated TV shows:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to fetch top rated TV shows" });
   }
 });
@@ -312,21 +410,30 @@ router.get("/tmdb/tv/on_the_air", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log("Making TMDB request for on the air TV shows");
     const response = await fetch(
       `https://api.themoviedb.org/3/tv/on_the_air?api_key=${apiKey}&language=fr-FR&page=1`
     );
-    
+
     if (!response.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, data);
     res.json(data);
   } catch (error) {
     console.error("Error fetching on the air TV shows:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to fetch on the air TV shows" });
   }
 });
@@ -346,21 +453,30 @@ router.get("/tmdb/tv/airing_today", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log("Making TMDB request for airing today TV shows");
     const response = await fetch(
       `https://api.themoviedb.org/3/tv/airing_today?api_key=${apiKey}&language=fr-FR&page=1`
     );
-    
+
     if (!response.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, data);
     res.json(data);
   } catch (error) {
     console.error("Error fetching airing today TV shows:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to fetch airing today TV shows" });
   }
 });
@@ -381,21 +497,30 @@ router.get("/tmdb/tv/genre/:genreId", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB request for TV shows genre ${genreId}`);
     const response = await fetch(
       `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&language=fr-FR&with_genres=${genreId}&page=1`
     );
-    
+
     if (!response.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, data);
     res.json(data);
   } catch (error) {
     console.error("Error fetching TV shows by genre:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to fetch TV shows by genre" });
   }
 });
@@ -416,6 +541,10 @@ router.get("/tmdb/tv/:id", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter before making multiple requests
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB requests for TV show ${id}`);
     const [showResponse, creditsResponse, videosResponse] = await Promise.all([
       fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${apiKey}&language=fr-FR`),
       fetch(`https://api.themoviedb.org/3/tv/${id}/credits?api_key=${apiKey}`),
@@ -423,6 +552,7 @@ router.get("/tmdb/tv/:id", async (req, res) => {
     ]);
 
     if (!showResponse.ok || !creditsResponse.ok || !videosResponse.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error("TMDB API error");
     }
 
@@ -433,12 +563,16 @@ router.get("/tmdb/tv/:id", async (req, res) => {
     ]);
 
     const result = { show, credits, videos };
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, result);
     res.json(result);
   } catch (error) {
     console.error("Error fetching TV show details:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to fetch TV show details" });
   }
 });
@@ -448,7 +582,7 @@ router.get("/tmdb/tv/search", async (req, res) => {
   try {
     const { query } = req.query;
     const apiKey = process.env.TMDB_API_KEY;
-    
+
     if (!apiKey) {
       return res.status(500).json({ error: "TMDB API key not configured" });
     }
@@ -457,18 +591,28 @@ router.get("/tmdb/tv/search", async (req, res) => {
       return res.status(400).json({ error: "Query parameter is required" });
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB TV search request for: ${query}`);
     const response = await fetch(
       `https://api.themoviedb.org/3/search/tv?api_key=${apiKey}&language=fr-FR&query=${encodeURIComponent(query)}&page=1`
     );
-    
+
     if (!response.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     res.json(data);
   } catch (error) {
     console.error("Error searching TV shows:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to search TV shows" });
   }
 });
@@ -489,22 +633,31 @@ router.get("/tmdb/tv/:id/season/:seasonNumber", async (req, res) => {
       return res.json(cached);
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB request for TV season ${id}/${seasonNumber}`);
     const response = await fetch(
       `https://api.themoviedb.org/3/tv/${id}/season/${seasonNumber}?api_key=${apiKey}&language=fr-FR`
     );
-    
+
     if (!response.ok) {
       console.error(`TMDB API error for TV season ${id}/${seasonNumber}: ${response.status} ${response.statusText}`);
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
-    
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     // Cache the result
     setCachedData(cacheKey, data);
     res.json(data);
   } catch (error) {
     console.error("Error fetching TV season details:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to fetch TV season details" });
   }
 });
@@ -514,7 +667,7 @@ router.get("/tmdb/multi-search", async (req, res) => {
   try {
     const { query } = req.query;
     const apiKey = process.env.TMDB_API_KEY;
-    
+
     if (!apiKey) {
       return res.status(500).json({ error: "TMDB API key not configured" });
     }
@@ -523,18 +676,28 @@ router.get("/tmdb/multi-search", async (req, res) => {
       return res.status(400).json({ error: "Query parameter is required" });
     }
 
+    // Wait for rate limiter
+    await tmdbRateLimiter.wait();
+
+    console.log(`Making TMDB multi-search request for: ${query}`);
     const response = await fetch(
       `https://api.themoviedb.org/3/search/multi?api_key=${apiKey}&language=fr-FR&query=${encodeURIComponent(query)}&page=1`
     );
-    
+
     if (!response.ok) {
+      tmdbRateLimiter.recordError();
       throw new Error(`TMDB API error: ${response.statusText}`);
     }
 
     const data = await response.json();
+
+    // Record success
+    tmdbRateLimiter.recordSuccess();
+
     res.json(data);
   } catch (error) {
     console.error("Error multi-searching content:", error);
+    tmdbRateLimiter.recordError();
     res.status(500).json({ error: "Failed to search content" });
   }
 });

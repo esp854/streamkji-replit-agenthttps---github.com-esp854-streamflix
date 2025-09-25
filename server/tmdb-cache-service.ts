@@ -2,6 +2,72 @@ import { db } from "./db";
 import { eq, sql, and, desc, gte, lte } from "drizzle-orm";
 import { robustTMDBService } from "../client/src/lib/tmdb-robust";
 
+// Rate limiter for TMDB API calls in cache service
+class TMDBCacheRateLimiter {
+  private maxRequests: number;
+  private timeWindow: number;
+  private requests: number[];
+  private consecutiveErrors: number;
+  private lastErrorTime: number;
+  private circuitBreakerOpen: boolean;
+  private circuitBreakerTimeout: number;
+
+  constructor(maxRequests = 25, timeWindow = 10000) { // 25 requests per 10 seconds for cache service
+    this.maxRequests = maxRequests;
+    this.timeWindow = timeWindow;
+    this.requests = [];
+    this.consecutiveErrors = 0;
+    this.lastErrorTime = 0;
+    this.circuitBreakerOpen = false;
+    this.circuitBreakerTimeout = 60000;
+  }
+
+  async wait(): Promise<void> {
+    const now = Date.now();
+
+    // Check circuit breaker
+    if (this.circuitBreakerOpen) {
+      if (now - this.lastErrorTime < this.circuitBreakerTimeout) {
+        throw new Error('Circuit breaker is open - TMDB API temporarily unavailable');
+      } else {
+        this.circuitBreakerOpen = false;
+        this.consecutiveErrors = 0;
+      }
+    }
+
+    // Clean old requests
+    this.requests = this.requests.filter(time => now - time < this.timeWindow);
+
+    // Check if we're at the limit
+    if (this.requests.length >= this.maxRequests) {
+      const oldest = this.requests[0];
+      const waitTime = this.timeWindow - (now - oldest) + (Math.random() * 1000);
+      console.log(`Cache service rate limit reached, waiting ${Math.round(waitTime)}ms`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return this.wait();
+    }
+
+    this.requests.push(now);
+  }
+
+  recordError() {
+    this.consecutiveErrors++;
+    this.lastErrorTime = Date.now();
+
+    if (this.consecutiveErrors >= 5) {
+      this.circuitBreakerOpen = true;
+      console.warn('Cache service circuit breaker opened due to consecutive errors');
+    }
+  }
+
+  recordSuccess() {
+    this.consecutiveErrors = 0;
+    this.circuitBreakerOpen = false;
+  }
+}
+
+const tmdbCacheRateLimiter = new TMDBCacheRateLimiter();
+
 // Database cache tables would need to be created
 // For now, let's create a service that can cache in memory with database persistence
 
@@ -124,17 +190,24 @@ class TMDBCacheService {
         return fallbackData.results || [];
       }
 
+      // Wait for rate limiter
+      await tmdbCacheRateLimiter.wait();
+
       console.log('🌐 Fetching popular movies from TMDB API');
       const response = await fetch(
         `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}&language=fr-FR&page=1`
       );
 
       if (!response.ok) {
+        tmdbCacheRateLimiter.recordError();
         throw new Error(`TMDB API error: ${response.status}`);
       }
 
       const data = await response.json();
       const movies = data.results || [];
+
+      // Record success
+      tmdbCacheRateLimiter.recordSuccess();
 
       // Cache the result
       const now = new Date();
@@ -155,6 +228,7 @@ class TMDBCacheService {
 
     } catch (error) {
       console.error('Error fetching popular movies from TMDB:', error);
+      tmdbCacheRateLimiter.recordError();
       // Return static fallback data
       const { getStaticFallbackData } = await import("../client/src/lib/static-fallback-data.js");
       const fallbackData = getStaticFallbackData('/popular');
@@ -181,17 +255,24 @@ class TMDBCacheService {
         return fallbackData.results || [];
       }
 
+      // Wait for rate limiter
+      await tmdbCacheRateLimiter.wait();
+
       console.log('🌐 Fetching popular TV shows from TMDB API');
       const response = await fetch(
         `https://api.themoviedb.org/3/tv/popular?api_key=${apiKey}&language=fr-FR&page=1`
       );
 
       if (!response.ok) {
+        tmdbCacheRateLimiter.recordError();
         throw new Error(`TMDB API error: ${response.status}`);
       }
 
       const data = await response.json();
       const shows = data.results || [];
+
+      // Record success
+      tmdbCacheRateLimiter.recordSuccess();
 
       // Cache the result
       const now = new Date();
@@ -212,6 +293,7 @@ class TMDBCacheService {
 
     } catch (error) {
       console.error('Error fetching popular TV shows from TMDB:', error);
+      tmdbCacheRateLimiter.recordError();
       // Return static fallback data
       const { getStaticFallbackData } = await import("../client/src/lib/static-fallback-data.js");
       const fallbackData = getStaticFallbackData('/tv/popular');
@@ -238,17 +320,24 @@ class TMDBCacheService {
         return fallbackData.results || [];
       }
 
+      // Wait for rate limiter
+      await tmdbCacheRateLimiter.wait();
+
       console.log('🌐 Fetching trending content from TMDB API');
       const response = await fetch(
         `https://api.themoviedb.org/3/trending/all/week?api_key=${apiKey}&language=fr-FR&page=1`
       );
 
       if (!response.ok) {
+        tmdbCacheRateLimiter.recordError();
         throw new Error(`TMDB API error: ${response.status}`);
       }
 
       const data = await response.json();
       const trending = data.results || [];
+
+      // Record success
+      tmdbCacheRateLimiter.recordSuccess();
 
       // Cache the result
       const now = new Date();
@@ -269,6 +358,7 @@ class TMDBCacheService {
 
     } catch (error) {
       console.error('Error fetching trending content from TMDB:', error);
+      tmdbCacheRateLimiter.recordError();
       // Return static fallback data
       const { getStaticFallbackData } = await import("../client/src/lib/static-fallback-data.js");
       const fallbackData = getStaticFallbackData('/trending');
