@@ -84,10 +84,19 @@ const registerSchema = insertUserSchema.extend({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Create HTTP server
   const server = createServer(app);
-  
+
+  // Static file caching for high traffic
+  app.use('/assets', (req, res, next) => {
+    res.set({
+      'Cache-Control': 'public, max-age=31536000, immutable', // 1 year for static assets
+      'CDN-Cache-Control': 'max-age=31536000'
+    });
+    next();
+  });
+
   // Apply authentication middleware to all routes
   app.use(authenticateToken);
-  
+
   // Apply CSRF protection to all routes
   app.use(csrfProtection);
 
@@ -3022,23 +3031,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const response = await fetch(
         `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}&language=fr-FR&page=1`
       );
-      
+
       if (!response.ok) {
         console.error(`TMDB API error: ${response.status} ${response.statusText}`);
         // Handle rate limiting specifically
         if (response.status === 429) {
-          return res.status(429).json({ 
+          return res.status(429).json({
             error: "Rate limit exceeded. Please try again later.",
-            status: 429 
+            status: 429
           });
         }
-        return res.status(response.status).json({ 
+        return res.status(response.status).json({
           error: `TMDB API error: ${response.statusText}`,
-          status: response.status 
+          status: response.status
         });
       }
 
       const data = await response.json();
+
+      // Set aggressive caching headers for high traffic
+      res.set({
+        'Cache-Control': 'public, max-age=900, s-maxage=1800', // 15min browser, 30min CDN
+        'CDN-Cache-Control': 'max-age=3600', // 1 hour for CDN
+        'Vary': 'Accept-Encoding'
+      });
+
       res.json(data);
     } catch (error: any) {
       console.error("Error fetching popular movies:", error);
@@ -3586,6 +3603,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log('Test route called');
     res.json({ message: "Test route working" });
   });
+
+  // Performance monitoring endpoint
+  app.get("/api/health/performance", async (req: any, res: any) => {
+    const memUsage = process.memoryUsage();
+    const uptime = process.uptime();
+
+    // Get database connection status
+    let dbStatus = 'unknown';
+    try {
+      await db.execute(sql`SELECT 1`);
+      dbStatus = 'healthy';
+    } catch (error) {
+      dbStatus = 'error';
+    }
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      uptime: Math.floor(uptime),
+      memory: {
+        rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB',
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB',
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
+        external: Math.round(memUsage.external / 1024 / 1024) + 'MB'
+      },
+      database: dbStatus,
+      nodeVersion: process.version,
+      environment: process.env.NODE_ENV || 'development'
+    });
+  });
   
   // Get subscription plans
   app.get("/api/subscription/plans", async (req: any, res: any) => {
@@ -3916,7 +3962,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // TMDB API endpoints
+  // TMDB API endpoints with enhanced caching
   app.get("/api/tmdb/trending", async (req: any, res: any) => {
     try {
       const apiKey = process.env.TMDB_API_KEY;
@@ -3928,23 +3974,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const response = await fetch(
         `https://api.themoviedb.org/3/trending/movie/week?api_key=${apiKey}&language=fr-FR`
       );
-      
+
       if (!response.ok) {
         console.error(`TMDB API error: ${response.status} ${response.statusText}`);
         // Handle rate limiting specifically
         if (response.status === 429) {
-          return res.status(429).json({ 
+          return res.status(429).json({
             error: "Rate limit exceeded. Please try again later.",
-            status: 429 
+            status: 429
           });
         }
-        return res.status(response.status).json({ 
+        return res.status(response.status).json({
           error: `TMDB API error: ${response.statusText}`,
-          status: response.status 
+          status: response.status
         });
       }
 
       const data = await response.json();
+
+      // Set aggressive caching headers for high traffic
+      res.set({
+        'Cache-Control': 'public, max-age=900, s-maxage=1800', // 15min browser, 30min CDN
+        'CDN-Cache-Control': 'max-age=3600', // 1 hour for CDN
+        'Vary': 'Accept-Encoding'
+      });
+
       res.json(data);
     } catch (error: any) {
       console.error("Error fetching trending movies:", error);
@@ -4828,9 +4882,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       sitemap += `
 </urlset>`;
 
-      // Set proper headers
+      // Set proper headers with aggressive caching for high traffic
       res.header('Content-Type', 'application/xml');
-      res.header('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+      res.header('Cache-Control', 'public, max-age=3600, s-maxage=7200'); // 1 hour browser, 2 hours CDN
+      res.header('CDN-Cache-Control', 'max-age=14400'); // 4 hours for CDN
       res.send(sitemap);
     } catch (error) {
       console.error("Error generating sitemap:", error);

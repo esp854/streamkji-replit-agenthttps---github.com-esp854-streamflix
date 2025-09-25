@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Zupload Iframe</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #000;
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+        .iframe-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: black;
+        }
+        .url-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .info {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Zupload Iframe</h1>
+
+        <div class="test-section">
+            <h2>Test d'URL Zupload</h2>
+            <input type="text" id="zuploadUrl" class="url-input" placeholder="Entrez une URL Zupload (ex: https://zupload.me/embed/...)" value="https://zupload.me/embed/example">
+            <button onclick="testIframe()">Tester l'iframe</button>
+            <div class="info">
+                <strong>Paramètres appliqués :</strong><br>
+                - branding=0 (masque le branding)<br>
+                - show_title=0 (masque le titre)<br>
+                - show_info=0 (masque les infos)<br>
+                - disable_download=1 (désactive téléchargement)<br>
+                - no_download=1 (supprime bouton download)<br>
+                - autoplay=1 (lecture automatique)
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Résultat du test</h2>
+            <div class="iframe-container">
+                <iframe id="testIframe" src="about:blank" title="Test Zupload"></iframe>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Informations de debug</h2>
+            <div id="debugInfo" class="info">
+                Cliquez sur "Tester l'iframe" pour commencer le test.
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>URLs de test suggérées</h2>
+            <ul>
+                <li><code>https://zupload.me/embed/[VIDEO_ID]</code></li>
+                <li><code>https://zupload.com/embed/[VIDEO_ID]</code></li>
+                <li><code>https://example.zupload.com/v/[VIDEO_ID]</code></li>
+            </ul>
+            <p><strong>Note:</strong> Remplacez [VIDEO_ID] par un ID de vidéo réel de Zupload.</p>
+        </div>
+    </div>
+
+    <script>
+        function testIframe() {
+            const urlInput = document.getElementById('zuploadUrl');
+            const iframe = document.getElementById('testIframe');
+            const debugInfo = document.getElementById('debugInfo');
+
+            const originalUrl = urlInput.value.trim();
+
+            if (!originalUrl) {
+                debugInfo.innerHTML = '<span style="color: red;">Erreur: URL vide</span>';
+                return;
+            }
+
+            // Apply Zupload parameters
+            const modifiedUrl = originalUrl.includes('?')
+                ? `${originalUrl}&branding=0&show_title=0&show_info=0&disable_download=1&no_download=1&autoplay=1`
+                : `${originalUrl}?branding=0&show_title=0&show_info=0&disable_download=1&no_download=1&autoplay=1`;
+
+            // Update iframe
+            iframe.src = modifiedUrl;
+            iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-forms allow-popups');
+            iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen');
+
+            // Update debug info
+            debugInfo.innerHTML = `
+                <strong>URL originale:</strong> ${originalUrl}<br>
+                <strong>URL modifiée:</strong> ${modifiedUrl}<br>
+                <strong>Status:</strong> <span style="color: blue;">Chargement...</span><br>
+                <strong>Sandbox:</strong> allow-scripts allow-same-origin allow-presentation allow-forms allow-popups<br>
+                <strong>Allow:</strong> accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen
+            `;
+
+            // Monitor iframe load
+            iframe.onload = function() {
+                debugInfo.innerHTML = debugInfo.innerHTML.replace(
+                    '<span style="color: blue;">Chargement...</span>',
+                    '<span style="color: green;">Iframe chargée avec succès ✅</span>'
+                );
+            };
+
+            iframe.onerror = function() {
+                debugInfo.innerHTML = debugInfo.innerHTML.replace(
+                    '<span style="color: blue;">Chargement...</span>',
+                    '<span style="color: red;">Erreur de chargement de l\'iframe ❌</span>'
+                );
+            };
+        }
+
+        // Test with a sample URL on page load
+        window.addEventListener('load', function() {
+            // Auto-test if URL is provided
+            const urlInput = document.getElementById('zuploadUrl');
+            if (urlInput.value && urlInput.value !== 'https://zupload.me/embed/example') {
+                testIframe();
+            }
+        });
+    </script>
+</body>
+</html>

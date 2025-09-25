@@ -53,9 +53,15 @@ const ZuploadVideoPlayer: React.FC<ZuploadVideoPlayerProps> = ({
   }, [videoUrl, isAuthenticated]);
 
   // Modified video URL to include branding removal parameters and disable download
-  const modifiedVideoUrl = videoUrl.includes('?') 
-    ? `${videoUrl}&branding=0&show_title=0&show_info=0&disable_download=1&no_download=1` 
-    : `${videoUrl}?branding=0&show_title=0&show_info=0&disable_download=1&no_download=1`;
+  const modifiedVideoUrl = videoUrl.includes('?')
+    ? `${videoUrl}&branding=0&show_title=0&show_info=0&disable_download=1&no_download=1&autoplay=1`
+    : `${videoUrl}?branding=0&show_title=0&show_info=0&disable_download=1&no_download=1&autoplay=1`;
+
+  // Debug logging
+  console.log('🎬 Zupload Player Debug:');
+  console.log('- Original URL:', videoUrl);
+  console.log('- Modified URL:', modifiedVideoUrl);
+  console.log('- Is Zupload URL:', videoUrl.includes('zupload'));
 
   const handleCloseAd = () => {
     setShowAd(false);
@@ -117,10 +123,16 @@ const ZuploadVideoPlayer: React.FC<ZuploadVideoPlayerProps> = ({
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowFullScreen
         title={`Lecture de ${title}`}
-        // More restrictive sandbox to prevent downloads
-        sandbox="allow-scripts allow-same-origin allow-presentation"
-        onLoad={handleIframeLoad}
-        onError={handleIframeError}
+        // Less restrictive sandbox to allow more functionality
+        sandbox="allow-scripts allow-same-origin allow-presentation allow-forms allow-popups"
+        onLoad={() => {
+          console.log('🎬 Zupload iframe loaded successfully');
+          handleIframeLoad();
+        }}
+        onError={(e) => {
+          console.error('🎬 Zupload iframe failed to load:', e);
+          handleIframeError(e);
+        }}
         loading="lazy"
         // Additional attributes to prevent downloads
         referrerPolicy="no-referrer"
