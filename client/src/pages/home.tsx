@@ -7,11 +7,19 @@ import TelegramBanner from "@/components/telegram-banner";
 import SubscriptionBanner from "@/components/subscription-banner";
 import AdvertisementBanner from "@/components/AdvertisementBanner";
 import { useAuthCheck } from "@/hooks/useAuthCheck";
+import { useSEO } from "@/hooks/use-seo";
 import { useEffect, useState } from "react";
 
 export default function Home() {
   const { shouldShowAds } = useAuthCheck();
   const [activeSections, setActiveSections] = useState<string[]>([]);
+
+  // SEO is already handled in index.html, but we call useSEO to ensure consistency
+  useSEO({
+    title: "StreamFlix - Streaming de Films et Séries en VF | Regarder Gratuitement",
+    description: "Découvrez StreamFlix, votre plateforme de streaming gratuite. Regardez des milliers de films et séries en version française (VF) en HD. Films récents, classiques, séries populaires - tout est disponible gratuitement.",
+    keywords: ["streaming", "films", "séries", "VF", "gratuit", "HD", "StreamFlix", "cinéma", "télévision"]
+  });
   
   // Stagger the loading of different sections to reduce initial API load
   useEffect(() => {

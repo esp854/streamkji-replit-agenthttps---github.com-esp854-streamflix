@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Block admin and API routes from search engines
+Disallow: /admin
+Disallow: /api/
+Disallow: /login
+Disallow: /register
+
+# Allow access to sitemap
+Allow: /sitemap.xml
+
+# Crawl delay (optional)
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://streamflix.app/sitemap.xml

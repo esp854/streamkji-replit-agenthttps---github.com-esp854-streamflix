@@ -6,7 +6,7 @@ console.log('Plans imported:', plans); // Debug log
 
 import { paymentService, type CustomerInfo } from "./payment-service";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { 
   insertFavoriteSchema, 
   insertWatchHistorySchema, 
@@ -4711,25 +4711,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Process webhook from Lygos
       const result = await paymentService.processLygosWebhook(req.body);
-      
+
       if (result.success) {
         // Update payment and subscription status based on webhook data
         const { id, status, custom_data } = req.body;
-        
+
         // Update payment status in database
         await storage.updatePaymentStatus(id, status);
-        
+
         // If payment is completed, activate subscription
         if (status === "completed" && custom_data) {
           const { userId, planId } = custom_data;
           const selectedPlan = plans[planId as keyof typeof plans];
-          
+
           if (selectedPlan) {
             // Calculate subscription dates
             const startDate = new Date();
             const endDate = new Date();
             endDate.setDate(endDate.getDate() + selectedPlan.duration);
-            
+
             // Create subscription in database
             const subscription = await storage.createSubscription({
               userId: userId,
@@ -4740,19 +4740,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
               startDate: startDate,
               endDate: endDate
             });
-            
+
             console.log("Subscription activated for user:", userId);
           }
         }
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error processing Lygos webhook:", error);
       res.status(500).json({ error: "Erreur lors du traitement du webhook" });
     }
   });
-  
+
+  // SEO: Dynamic Sitemap
+  app.get("/sitemap.xml", async (req: any, res: any) => {
+    try {
+      const baseUrl = process.env.CLIENT_URL || 'https://streamflix.app';
+
+      // Get all active content
+      const allContent = await storage.getAllContent();
+      const activeContent = allContent.filter(content => content.active);
+
+      // Build sitemap XML
+      let sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">`;
+
+      // Add homepage
+      sitemap += `
+  <url>
+    <loc>${baseUrl}</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+  </url>`;
+
+      // Add static pages
+      const staticPages = [
+        { path: '/series', priority: '0.9', changefreq: 'daily' },
+        { path: '/films', priority: '0.9', changefreq: 'daily' },
+        { path: '/trending', priority: '0.8', changefreq: 'daily' },
+        { path: '/search', priority: '0.7', changefreq: 'weekly' },
+        { path: '/subscription', priority: '0.8', changefreq: 'monthly' },
+        { path: '/contact', priority: '0.6', changefreq: 'monthly' },
+        { path: '/privacy', priority: '0.4', changefreq: 'yearly' },
+        { path: '/terms', priority: '0.4', changefreq: 'yearly' }
+      ];
+
+      staticPages.forEach(page => {
+        sitemap += `
+  <url>
+    <loc>${baseUrl}${page.path}</loc>
+    <changefreq>${page.changefreq}</changefreq>
+    <priority>${page.priority}</priority>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+  </url>`;
+      });
+
+      // Add dynamic content pages
+      activeContent.forEach(content => {
+        const contentType = content.mediaType === 'movie' ? 'films' : 'series';
+        const lastmod = content.updatedAt ? new Date(content.updatedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+        sitemap += `
+  <url>
+    <loc>${baseUrl}/${contentType}/${content.id}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>${lastmod}</lastmod>`;
+
+        // Add image if available
+        if (content.posterPath) {
+          sitemap += `
+    <image:image>
+      <image:loc>https://image.tmdb.org/t/p/w500${content.posterPath}</image:loc>
+      <image:title>${content.title}</image:title>
+      <image:caption>${content.description || content.title}</image:caption>
+    </image:image>`;
+        }
+
+        sitemap += `
+  </url>`;
+      });
+
+      sitemap += `
+</urlset>`;
+
+      // Set proper headers
+      res.header('Content-Type', 'application/xml');
+      res.header('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+      res.send(sitemap);
+    } catch (error) {
+      console.error("Error generating sitemap:", error);
+      res.status(500).send("Error generating sitemap");
+    }
+  });
+
   return server;
 }
 

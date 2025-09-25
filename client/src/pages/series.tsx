@@ -5,10 +5,18 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Play, Info, Pause, PlayIcon } from "lucide-react";
 import { Link } from "wouter";
+import { useSEO } from "@/hooks/use-seo";
 
 export default function Series() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+
+  // SEO optimization
+  useSEO({
+    title: "Séries TV en Streaming VF Gratuit | StreamFlix",
+    description: "Découvrez des milliers de séries TV en streaming gratuit. Séries populaires, dramatiques, comiques en version française (VF) en HD. Regardez vos séries préférées gratuitement sur StreamFlix.",
+    keywords: ["séries", "streaming", "VF", "gratuit", "HD", "télévision", "drama", "comédie", "StreamFlix"]
+  });
 
   const { data: popularSeries, isLoading: popularLoading } = useQuery({
     queryKey: ["/api/tmdb/tv/popular"],

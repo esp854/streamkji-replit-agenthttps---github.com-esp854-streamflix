@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { tmdbService } from "@/lib/tmdb";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useShare } from "@/hooks/use-share";
+import { useSEO, generateContentSEO } from "@/hooks/use-seo";
 import MovieRow from "@/components/movie-row";
 
 export default function MovieDetail() {
@@ -85,6 +86,10 @@ export default function MovieDetail() {
   const { movie, credits, videos } = movieDetails;
   const cast = credits.cast.slice(0, 8);
   const trailer = videos.results.find(video => video.type === "Trailer" && video.site === "YouTube");
+
+  // SEO optimization
+  const seoData = movie ? generateContentSEO(movie, 'movie') : {};
+  useSEO(seoData);
 
   const formatRuntime = (minutes: number) => {
     const hours = Math.floor(minutes / 60);

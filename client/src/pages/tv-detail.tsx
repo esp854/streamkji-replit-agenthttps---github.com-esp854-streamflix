@@ -6,6 +6,7 @@ import { useMemo, useState, useEffect } from "react";
 import { tmdbService } from "@/lib/tmdb";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useShare } from "@/hooks/use-share";
+import { useSEO, generateContentSEO } from "@/hooks/use-seo";
 import TVRow from "@/components/tv-row";
 
 export default function TVDetail() {
@@ -145,6 +146,10 @@ export default function TVDetail() {
   const { credits, videos } = tvDetails as any;
   const cast = credits?.cast?.slice(0, 8) || [];
   const trailer = videos?.results?.find((video: any) => video.type === "Trailer" && video.site === "YouTube");
+
+  // SEO optimization
+  const seoData = tv ? generateContentSEO(tv, 'tv') : {};
+  useSEO(seoData);
 
   const formatEpisodeRuntime = (runtimes: number[] | undefined) => {
     if (!runtimes || runtimes.length === 0) return null;
